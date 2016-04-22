@@ -159,6 +159,7 @@ let rec simplify_tokens in_class tokens rem =
     simplify_tokens 1 tokens (Kwd "{" :: Ident name :: Ident "class" :: rem)
   | Ident "virtual" :: tokens ->
     simplify_tokens in_class tokens rem
+  | Ident "FLAGS_ANONYMOUS_ENUM" :: Kwd "(" :: Kwd ")" :: tokens
   | Ident "enum" :: tokens ->
     let rec iter tokens =
       match tokens with
@@ -176,7 +177,8 @@ let rec simplify_tokens in_class tokens rem =
     in
     simplify_tokens in_class (iter tokens) rem
 
-  | Ident "char" :: Kwd "*" :: Ident name :: Kwd "=" :: Ident "NULL" :: tokens ->
+  | Ident "char" :: Kwd "*" :: Ident name :: Kwd "=" :: Ident "NULL" :: tokens
+  | Ident "char" :: Kwd "*" :: Ident name :: Kwd "=" :: Ident "nullptr" :: tokens ->
     simplify_tokens in_class
       (Ident "char" :: Kwd "*?" :: Ident name :: Kwd "=" :: Ident "NULL" :: tokens)
       rem
@@ -283,7 +285,10 @@ let parse_tokens basename classes links tokens =
         get_functions (Some (name, [])) [] tokens
       | Kwd "}" :: tokens ->
         begin match in_class with
-        | None -> assert false
+        | None -> begin match tokens with [] -> print_endline "none left";
+            | t1::tl ->
+                Printf.printf "t1 %s\n" (string_of_token t1);
+            exit 0; end
         | Some (name, methods) ->
           (*          Printf.eprintf "Adding class %S\n%!" name; *)
           classes := (name, List.rev methods, basename) :: !classes
