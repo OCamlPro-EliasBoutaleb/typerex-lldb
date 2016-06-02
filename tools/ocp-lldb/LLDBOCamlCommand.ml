@@ -293,6 +293,11 @@ let ocaml_print_narg1 debugger addr =
   LLDBOCamlValue.print_value target mem heap addr [];
   ()
 
+let ocaml_load_types debugger modname =
+  let target = SBDebugger.getSelectedTarget debugger in
+  LLDBOCamlTypes.load_tt target modname;
+  ()
+
 #ifndef OCAML_NON_OCP
 
 let ocaml_locids debugger =
@@ -377,6 +382,7 @@ let ocaml_command debugger args =
   | [ "target"; modname ] -> ocaml_target_narg1 debugger modname
   | [ "paths" ] -> ocaml_paths debugger
   | [ "print"; addr ] -> ocaml_print_narg1 debugger addr
+  | [ "types"; modname ] -> ocaml_load_types debugger modname
 
 #ifndef OCAML_NON_OCP
   | [ "locids" ] -> ocaml_locids debugger

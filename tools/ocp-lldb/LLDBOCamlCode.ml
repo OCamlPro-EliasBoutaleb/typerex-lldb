@@ -200,7 +200,7 @@ let get_compilation_units = LLDBUtils.get_cached (fun target ->
     let cu_modname =
       if Filename.check_suffix cu_basename ".ml" then begin
         let modname = String.capitalize (
-          Filename.chop_extension cu_basename) in
+          Filename.basename @@ Filename.chop_extension cu_basename) in
         Some modname
       end else None in
     let cu ={
