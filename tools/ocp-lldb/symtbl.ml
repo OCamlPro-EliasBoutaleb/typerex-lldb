@@ -97,7 +97,7 @@ module IterArg = struct
 
     let final_scope = try List.hd !sc with _ -> "toplevel" in
 
-    let gen_type = print_type bind.vb_expr in
+    let gen_type = print_type bind.vb_expr.exp_env bind.vb_expr.exp_type in
     Hashtbl.add !vb_tbl ident (bind.vb_expr.exp_loc, gen_type, final_scope);
 
     Printf.printf "processed %s : [%s]\n" ident (print_stack !sc);

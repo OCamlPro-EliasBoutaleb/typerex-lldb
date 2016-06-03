@@ -111,7 +111,6 @@ type image = {
 }
 
 type pointer_kind =
-| Integer
 | MinorAddress
 | MajorAddress
 | ModuleCode of string

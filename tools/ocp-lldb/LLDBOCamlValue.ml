@@ -85,7 +85,7 @@ let tree_of_qualified lookup_fun env ty_path name =
 let pointer_kind mem heap addr =
   let range =  (addr,Int64.add addr 1L) in
   if Int64.logand addr 1L <> 0L then
-    Integer
+    External
   else
     if
       addr >= heap.caml_young_start && addr <= heap.caml_young_end
@@ -147,21 +147,14 @@ let string_of_type_expr env ty = GcprofLocations.string_of_type_expr env ty
 let rec print_gen_value c indent addr types =
   if indent > !max_indent then [ indent, "...", ""] else
   match pointer_kind c.mem c.heap addr with
-  | Integer ->
-    print_typed_int c indent (Int64.to_int (Int64.shift_right addr 1)) types
-
   | ModuleCode m ->
     [ indent,
       Printf.sprintf "0x%Lx" addr,
       Printf.sprintf "code of module %S" m ]
-  | External ->
-    [ indent,
-      Printf.sprintf "0x%Lx" addr,
-      "external"
-    ]
   | MinorAddress
   | MajorAddress
   | ModuleData _ as zone ->
+    begin
     let header = LLDBUtils.getMem64 c.process (Int64.sub addr 8L) in
     let h = LLDBOCamlDatarepr.parse_header c.mem header in
     (* #ifndef OCAML_NON_OCP *)
@@ -223,10 +216,14 @@ let rec print_gen_value c indent addr types =
             | _ -> ty) loc_info in
           (indent, descr, ty) :: tail
 #endif
+    end
+  | External ->
+    print_typed_int c indent addr types
 
 and print_typed_int c indent n types =
+  let shadowed_n = n in
   match types with
-  | [] -> [ indent, Printf.sprintf "Integer %d" n, ""]
+  | [] -> [ indent, Printf.sprintf "Val %Ld" (Int64.shift_right n 1), ""]
   | (env, ty) :: types ->
     let ty = Ctype.expand_head env ty in
     let s =
@@ -245,6 +242,31 @@ and print_typed_int c indent n types =
       | Tpackage (_, _, _) -> print_typed_int c indent n types
 
       | Tconstr (path, _, _) ->
+        if Path.same path Predef.path_float then begin
+          [ indent, Printf.sprintf "%f" (Int64.float_of_bits n), ""]
+        end else
+        if Path.same path Predef.path_int32 then begin
+            let v = LLDBUtils.getMem64 c.process
+              (Int64.add n (Int64.of_int (8))) in
+          [ indent, Printf.sprintf "%ld" (Int64.to_int32 v), ""]
+        end else
+        if Path.same path Predef.path_int64 then begin
+            let v = LLDBUtils.getMem64 c.process
+              (Int64.add n (Int64.of_int (8))) in
+          [ indent, Printf.sprintf "%Ld" v, ""]
+        end else
+        if Path.same path Predef.path_nativeint then begin
+            let v = LLDBUtils.getMem64 c.process
+              (Int64.add n (Int64.of_int (8))) in
+          [ indent, Printf.sprintf "%nd" (Int64.to_nativeint v), ""]
+        end else
+        if Path.same path Predef.path_string then begin
+          let addr = n in
+          let header = LLDBUtils.getMem64 c.process (Int64.sub addr 8L) in
+          let h = LLDBOCamlDatarepr.parse_header c.mem header in
+          print_raw_value c indent h addr
+        end else
+        let n = Int64.to_int (Int64.shift_right n 1) in
         if Path.same path Predef.path_list then begin
             let s = match n with
             | 0 -> "[]"
@@ -280,6 +302,7 @@ and print_typed_int c indent n types =
             | _ -> Printf.sprintf "invalid(option,%d)" n in
           [ indent, s, "" ]
         end else
+          let n = shadowed_n in
           match
             (try `Value (Env.find_type path env) with exn -> `Exception exn)
           with
@@ -289,7 +312,7 @@ and print_typed_int c indent n types =
             | `Value decl ->
               match decl.type_kind with
               | Type_variant constr_list ->
-                let tag = Cstr_constant n in
+                let tag = Cstr_constant (Int64.to_int n) in
                 let (constr_name, constr_args,ret_type) =
                   constructor_info
                     (Datarepr.find_constr_by_tag tag constr_list) in
@@ -317,7 +340,7 @@ and print_typed_int c indent n types =
 
 and print_typed_value c indent h zone addr types =
   match types with
-  | [] -> print_raw_value c indent h zone addr
+  | [] -> print_raw_value c indent h addr
   | (env, ty) :: types ->
     let ty = Ctype.expand_head env ty in
     match ty.desc with
@@ -515,7 +538,7 @@ and print_record c indent  h zone addr env ty decl path ty_list lbl_list =
          head @
            print_list_value c indent env ty tail_addr (i+1)
 
- and print_raw_value c indent h zone addr =
+ and print_raw_value c indent h addr =
      if indent > !max_indent then
        [ indent, "...", "" ]
      else
@@ -539,9 +562,8 @@ and print_record c indent  h zone addr env ty decl path ty_list lbl_list =
          else
            let s =
              Printf.sprintf
-               "<ptr>0x%Lx: { tag=%d wosize=%d gc=%x zone=%s } (%s)</ptr>"
+               "<ptr>0x%Lx: { tag=%d wosize=%d gc=%x } (%s)</ptr>"
                addr h.tag h.wosize h.gc
-               zone
                (string_of_tag h.tag)
            in
            [ indent, s, "" ]
@@ -588,7 +610,7 @@ and print_record c indent  h zone addr env ty decl path ty_list lbl_list =
        else
          let v = LLDBUtils.getMem64 c.process
            (Int64.add addr (Int64.of_int (i * 8))) in
-         let s = print_gen_value c (indent+4) v [env,ty_arg] in
+         let s = print_typed_int c (indent+4) v [env,ty_arg] in
          let s = match s with
            | [] -> assert false
            | (_, head, ty) :: tail ->
