@@ -73,6 +73,7 @@ if ocaml_version < "4.02" then {
     "%{lwt.unix_FULL_DST_DIR}%/lwt-unix.cmxa"
     "%{OCAMLLIB}%/compiler-libs/ocamlbytecomp.cmxa"
     "%{ocplib-system_FULL_DST_DIR}%/ocplib-system.cmxa"
+    "%{str_FULL_DST_DIR}%/str.cmxa"
 ]
 
   if has_memprof then {
@@ -100,6 +101,7 @@ if ocaml_version < "4.02" then {
              "libunix.a" (where it comes in its own module). *)
       "%{lwt.unix_FULL_DST_DIR}%/liblwt-unix_stubs.a"
       "%{unix_FULL_DST_DIR}%/libunix.a"
+      "%{str_FULL_DST_DIR}%/libcamlstr.a"
 
   ]
     if include "../build-project.ocpinc" then {} else {}

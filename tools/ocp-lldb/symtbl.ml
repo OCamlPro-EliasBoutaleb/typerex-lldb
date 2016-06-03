@@ -1,13 +1,10 @@
 open Typedtree
 
-let print_type x =
-  let typ = x.exp_type in
-  let env = x.exp_env in
+let print_type env typ =
   Format.pp_print_string Format.str_formatter "  ";
   Printtyp.wrap_printing_env env
                    (fun () -> Printtyp.type_scheme Format.str_formatter typ);
-  Format.pp_print_newline Format.str_formatter ();
-  let s = Format.flush_str_formatter () in s
+  Format.flush_str_formatter ()
 
 let print_stack x = String.concat ", " x
 
