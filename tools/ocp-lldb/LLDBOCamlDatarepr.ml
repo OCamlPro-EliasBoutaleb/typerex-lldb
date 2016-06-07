@@ -71,3 +71,13 @@ let load_string process mem addr =
   let nRead = SBProcess.readMemory process addr b len LLDBUtils.sbError in
   if nRead < len then failwith "Could not load string from memory";
   Bytes.to_string b
+
+let read_null_terminated_string process mem addr =
+  let buff = Bytes.make 1000 '\x00' in
+  let b = Bytes.create 1 in
+  let rec h i =
+    let nRead = SBProcess.readMemory process (Int64.add addr (Int64.of_int i)) b 1 LLDBUtils.sbError in
+    if nRead < 1 then failwith "Could not read byte from memory" else
+        let c = Bytes.get b 0 in
+        if c = '\x00' then i else begin Bytes.set buff i c; h (i+1) end in
+  let len = h 0 in Bytes.sub_string buff 0 len

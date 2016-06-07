@@ -37,3 +37,7 @@ val load_header :
 val load_string :
   LLDBGenerated.sbProcess ->
   LLDBTypes.mem_info -> int64 -> string
+
+val read_null_terminated_string :
+  LLDBGenerated.sbProcess ->
+  LLDBTypes.mem_info -> int64 -> string

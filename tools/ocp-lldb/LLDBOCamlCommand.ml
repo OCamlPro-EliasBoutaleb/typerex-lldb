@@ -23,49 +23,9 @@
 open LLDBEnums
 open LLDBOCaml
 
-
 (* ocp-lldb modules *)
 open LLDBTypes
 open LLDBGlobals
-
-      (*
-        let target = SBDebugger.getSelectedTarget debugger in
-        begin
-        match funname.[0] with
-        | 'A'..'Z' ->
-        let regex =
-        try
-        let pos = String.index funname '.' in
-        let modname = String.sub funname 0 pos in
-        let funname = String.sub funname (pos+1)
-        (String.length funname -pos-1) in
-        Printf.sprintf "caml%s__%s_[0-9]+" modname funname
-        with _ ->
-        Printf.sprintf "caml%s__entry" funname
-        in
-        let main_bp = SBTarget.breakpointCreateByRegex target
-        regex
-        (Some (SBFileSpec.getFilename (SBTarget.getExecutable target))) in
-        let nlocs = SBBreakpoint.getNumLocations main_bp in
-        let id = SBBreakpoint.getID main_bp in
-        Printf.printf "Breakpoint %d set on %d locations\n%!"
-        id nlocs;
-        let _locs =
-        Array.init nlocs
-        (fun i ->
-        let addr = SBBreakpointLocation.getAddress
-        (SBBreakpoint.getLocationAtIndex main_bp i) in
-        let sym = SBAddress.getSymbol addr in
-        Printf.printf "    (%d.%d) %s\n%!"
-        id (1+i) (SBSymbol.getName sym))
-        in
-        ()
-        | _ ->
-        Printf.printf "'ocaml break' expects a fully qualified name\n%!";
-        end
-
-        | [| "b"; funname |] ->
-      *)
 
 let ocaml_break_narg1 debugger funname =
   let target = SBDebugger.getSelectedTarget debugger in

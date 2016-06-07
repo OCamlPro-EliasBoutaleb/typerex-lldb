@@ -25,7 +25,6 @@ open StringCompat
 open LLDBEnums
 open LLDBOCaml
 
-
 (* ocp-lldb modules *)
 open LLDBTypes
 open LLDBGlobals
@@ -59,9 +58,9 @@ let string_of_tag tag =
   | _ -> "value"
 
 
-    (* Print a constructor or label, giving it the same prefix as the type
-       it comes from. Attempt to omit the prefix if the type comes from
-       a module that has been opened. *)
+(* Print a constructor or label, giving it the same prefix as the type
+   it comes from. Attempt to omit the prefix if the type comes from
+   a module that has been opened. *)
 
 let tree_of_qualified lookup_fun env ty_path name =
   match ty_path with
@@ -160,7 +159,6 @@ let rec print_gen_value c indent addr types =
     begin
     let header = LLDBUtils.getMem64 c.process (Int64.sub addr 8L) in
     let h = LLDBOCamlDatarepr.parse_header c.mem header in
-    (* #ifndef OCAML_NON_OCP *)
     let zone = match zone with
       | MinorAddress -> "minor"
       | MajorAddress -> "major"
@@ -545,13 +543,14 @@ and print_record c indent  h addr env ty decl path ty_list lbl_list =
      if indent > !max_indent && (not !vf) then
        [ indent, "...", "" ]
      else
-       if h.tag < 251 then
-         (indent,
-          Printf.sprintf "<block[%d] tag=%d>" h.wosize h.tag
-            , "?") ::
-           (print_block c indent addr 0 h.wosize)
-       else
-         if h.tag = 252 then
+         match h.tag with
+         | 251 ->
+           (indent,
+            Printf.sprintf "<block[%d] tag=%d>" h.wosize h.tag
+              , "?") ::
+             (print_block c indent addr 0 h.wosize)
+
+         | 252 ->
            let len = LLDBOCamlDatarepr.parse_string_length c.process h addr in
            let maxlen = min 50 len in
            let b = Bytes.create maxlen in
@@ -562,7 +561,35 @@ and print_record c indent  h addr env ty decl path ty_list lbl_list =
              [ indent, Printf.sprintf "(len %d) %S" len b, "string" ]
            else
              [ indent, "<unreadable string>", "string" ]
-         else
+
+         | 253 ->
+           let v = LLDBUtils.getMem64 c.process addr in
+          [ indent, Printf.sprintf "%f" (Int64.float_of_bits v), "float"]
+
+         | 254 -> [ indent, Printf.sprintf "%f" (Int64.float_of_bits addr), "float"]
+
+         | 255 -> begin
+           let structop = LLDBUtils.getMem64 c.process addr in
+           let v = LLDBUtils.getMem64 c.process
+             (Int64.add addr (Int64.of_int (8))) in
+           let identifier_ptr = LLDBUtils.getMem64 c.process structop in
+           let id = LLDBOCamlDatarepr.read_null_terminated_string c.process c.mem identifier_ptr in
+           match id with
+               | "_i" -> [ indent+4, Printf.sprintf "%ld" (Int64.to_int32 v), "int32"]
+               | "_n" -> [ indent+4, Printf.sprintf "%nd" (Int64.to_nativeint v), "nativeint"]
+               | "_j" -> [ indent+4, Printf.sprintf "%Ld" v, "int64"]
+
+               | _ ->
+               let s =
+                 Printf.sprintf
+                   "<ptr>0x%Lx: { tag=%d wosize=%d gc=%x } (%s) id=%s</ptr>"
+                   addr h.tag h.wosize h.gc
+                   (string_of_tag h.tag) id
+               in
+               [ indent, s, "" ]
+         end
+
+         | _ ->
            let s =
              Printf.sprintf
                "<ptr>0x%Lx: { tag=%d wosize=%d gc=%x } (%s)</ptr>"
@@ -613,7 +640,9 @@ and print_record c indent  h addr env ty decl path ty_list lbl_list =
        else
          let v = LLDBUtils.getMem64 c.process
            (Int64.add addr (Int64.of_int (i * 8))) in
-         let s = print_typed_int c (indent+4) v [env,ty_arg] in
+         let header = LLDBUtils.getMem64 c.process (Int64.sub addr 8L) in
+         let h = LLDBOCamlDatarepr.parse_header c.mem header in
+         let s = print_typed_value c indent h v [env,ty_arg] in
          let s = match s with
            | [] -> assert false
            | (_, head, ty) :: tail ->
