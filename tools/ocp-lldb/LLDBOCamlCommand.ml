@@ -279,23 +279,9 @@ let ocaml_paths debugger =
   Printf.printf "You can use 'settings set target.source-map PATH1 PATH2'\n";
   Printf.printf "to translate these paths to yours.\n%!"
 
-let ocaml_print_narg1 debugger addr =
-  let target = SBDebugger.getSelectedTarget debugger in
-  let process = SBTarget.getProcess target in
-  let addr = LLDBUtils.int64_of_string addr in
-  let sbError = SBError.create () in
-  let nRead = SBProcess.readMemory process addr buffer 8 sbError in
-  if !verbose then
-    Printf.printf "%d bytes read from memory\n%!" nRead;
-
-  let heap = LLDBOCamlHeap.get_heap_info target in
-  let mem = LLDBOCamlHeap.get_memory_info target in
-  LLDBOCamlValue.print_value target mem heap addr [];
-  ()
-
 let strip s = List.hd @@ Str.split (Str.regexp "/") s
 
-let ocaml_print_locals debugger var =
+let ocaml_print_locals debugger var vf =
   let target = SBDebugger.getSelectedTarget debugger in
   let process = SBTarget.getProcess target in
   let thread = SBProcess.getSelectedThread process in
@@ -320,7 +306,7 @@ let ocaml_print_locals debugger var =
                     then Printf.sprintf "(ptr) = 0x%Lx" final
                     else Printf.sprintf "(val) = %Ld" (Int64.shift_right final 1) in
                 Printf.printf "%s : %s %s\n" name typ vs;
-                LLDBOCamlValue.print_value target mem heap final [];
+                LLDBOCamlValue.print_value target mem heap final [] vf;
             else Printf.printf "%s : %s = not available\n" name typ
         end
         else Printf.printf "%s : %s = not in scope\n" name typ in
@@ -356,7 +342,7 @@ let ocaml_print_locals debugger var =
                         then "ptr"
                         else "val" in
                     Printf.printf "%s : %s (%s) = " name typ vs;
-                    LLDBOCamlValue.print_value target mem heap final [];
+                    LLDBOCamlValue.print_value target mem heap final [] vf;
                 else Printf.printf "%s : %s = not available\n" name typ
             end
             else Printf.printf "%s : %s = not in scope\n" name typ
@@ -471,9 +457,10 @@ let ocaml_command debugger args =
   | [ "target" ] -> ocaml_target debugger
   | [ "target"; modname ] -> ocaml_target_narg1 debugger modname
   | [ "paths" ] -> ocaml_paths debugger
-  | [ "print"; "locals"] -> ocaml_print_locals debugger ""
-  | [ "print"; "var"; var_name] -> ocaml_print_locals debugger var_name
-  | [ "print"; addr ] -> ocaml_print_narg1 debugger addr
+  | [ "print"; "locals"] -> ocaml_print_locals debugger "" false
+  | [ "print"; "var"; var_name] -> ocaml_print_locals debugger var_name false
+  | [ "printv"; "locals"] -> ocaml_print_locals debugger "" true
+  | [ "printv"; "var"; var_name] -> ocaml_print_locals debugger var_name true
   | [ "typeof"; var_name] -> ocaml_print_typeof var_name
   | [ "types"; modname ] -> ocaml_load_types debugger modname
 

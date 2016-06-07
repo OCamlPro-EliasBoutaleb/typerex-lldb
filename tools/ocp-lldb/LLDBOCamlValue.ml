@@ -41,6 +41,9 @@ open GcprofTypes
 
 let max_indent = ref 10
 
+(*verbose flag*)
+let vf = ref false
+
 let string_of_tag tag =
   match tag with
   | 246 -> "lazy"
@@ -145,7 +148,7 @@ let string_of_type_expr env ty = GcprofLocations.string_of_type_expr env ty
 #endif
 
 let rec print_gen_value c indent addr types =
-  if indent > !max_indent then [ indent, "...", ""] else
+  if indent > !max_indent && (not !vf) then [ indent, "...", ""] else
   match pointer_kind c.mem c.heap addr with
   | ModuleCode m ->
     [ indent,
@@ -173,7 +176,7 @@ let rec print_gen_value c indent addr types =
             addr header h.tag h.wosize h.gc
             zone
             (string_of_tag h.tag); *)
-      print_typed_value c indent h zone addr types
+      print_typed_value c indent h addr types
 #ifndef OCAML_NON_OCP
     | Some locid ->
       (*    Printf.eprintf
@@ -202,7 +205,7 @@ let rec print_gen_value c indent addr types =
         | (Not_applicable | RecClosure _) -> types
         | Expr ty -> (env, ty) :: types
       in
-      let s = print_typed_value c indent h zone addr types in
+      let s = print_typed_value c indent h addr types in
       match loc_info with
       | None -> s
       | Some loc_info ->
@@ -266,13 +269,13 @@ and print_typed_int c indent n types =
           let h = LLDBOCamlDatarepr.parse_header c.mem header in
           print_raw_value c indent h addr
         end else
-        let n = Int64.to_int (Int64.shift_right n 1) in
         if Path.same path Predef.path_list then begin
-            let s = match n with
-            | 0 -> "[]"
-            | _ -> Printf.sprintf "invalid(list,%d)" n in
-          [ indent, s, "" ]
+          let addr = n in
+          let header = LLDBUtils.getMem64 c.process (Int64.sub addr 8L) in
+          let h = LLDBOCamlDatarepr.parse_header c.mem header in
+          print_typed_value c indent h addr types
         end else
+        let n = Int64.to_int (Int64.shift_right n 1) in
         if Path.same path Predef.path_int then begin
           [ indent, string_of_int n, "" ]
         end else
@@ -338,7 +341,7 @@ and print_typed_int c indent n types =
       (indent, head, type_info) :: tail
 
 
-and print_typed_value c indent h zone addr types =
+and print_typed_value c indent h addr types =
   match types with
   | [] -> print_raw_value c indent h addr
   | (env, ty) :: types ->
@@ -348,16 +351,16 @@ and print_typed_value c indent h zone addr types =
     | Tlink _ -> assert false
 
     | Tvar _
-      -> debug_path (print_typed_value c indent h zone addr types) "Tvar"
+      -> debug_path (print_typed_value c indent h addr types) "Tvar"
     | Tarrow _ (* label * type_expr * type_expr * commutable *)
-      -> debug_path (print_typed_value c indent h zone addr types) "Tarrow"
+      -> debug_path (print_typed_value c indent h addr types) "Tarrow"
     | Ttuple ty_args (*  type_expr list *)
       ->
       let ty_args = Array.of_list ty_args in
       let len = Array.length ty_args in
       if len <> h.wosize then
         debug_path
-          (print_typed_value c indent h zone addr types)
+          (print_typed_value c indent h addr types)
           (Printf.sprintf
              "WARNING(tuple size %d <> block size %d)"
              len h.wosize)
@@ -366,26 +369,26 @@ and print_typed_value c indent h zone addr types =
            (print_tuple "tuple" env ty_args c indent addr 0 h.wosize)
 
     | Tobject _ (* type_expr * (Path.t * type_expr list) option ref *)
-      -> debug_path (print_typed_value c indent h zone addr types) "Tobject"
+      -> debug_path (print_typed_value c indent h addr types) "Tobject"
     | Tfield _ (*  string * field_kind * type_expr * type_expr *)
-      -> debug_path (print_typed_value c indent h zone addr types) "Tfield"
+      -> debug_path (print_typed_value c indent h addr types) "Tfield"
     | Tnil
-      -> debug_path (print_typed_value c indent h zone addr types) "Tnil"
+      -> debug_path (print_typed_value c indent h addr types) "Tnil"
     | Tsubst _ (* type_expr, for copying *)
-      -> debug_path (print_typed_value c indent h zone addr types) "Tsubst"
+      -> debug_path (print_typed_value c indent h addr types) "Tsubst"
     | Tvariant _ (* row_desc *)
-      -> debug_path (print_typed_value c indent h zone addr types) "Tvariant"
+      -> debug_path (print_typed_value c indent h addr types) "Tvariant"
     | Tunivar _ (* string option *)
-      -> debug_path (print_typed_value c indent h zone addr types) "Tunivar"
+      -> debug_path (print_typed_value c indent h addr types) "Tunivar"
     | Tpoly _ (* type_expr * type_expr list *)
-      -> debug_path (print_typed_value c indent h zone addr types) "Tpoly"
+      -> debug_path (print_typed_value c indent h addr types) "Tpoly"
     | Tpackage _ (*  Path.t * Longident.t list * type_expr list *)
-      -> debug_path (print_typed_value c indent h zone addr types) "Tpackage"
+      -> debug_path (print_typed_value c indent h addr types) "Tpackage"
 
     (* | Tconstr _   Path.t * type_expr list * abbrev_memo ref *)
 
     | Tconstr(path, [], _) when Path.same path Predef.path_exn ->
-      debug_path (print_typed_value c indent h zone addr types) "exn"
+      debug_path (print_typed_value c indent h addr types) "exn"
 
     | Tconstr(path, [ty_arg], _) when Path.same path Predef.path_array ->
       (indent,
@@ -400,12 +403,12 @@ and print_typed_value c indent h zone addr types =
 
     | Tconstr (path, [tys], _)
         when Path.same path Predef.path_lazy_t ->
-      debug_path (print_typed_value c indent h zone addr types) "lazy"
+      debug_path (print_typed_value c indent h addr types) "lazy"
 
     | Tconstr(path, ty_list, _) ->
-      print_decl_value c indent h zone addr types ty env path ty_list
+      print_decl_value c indent h addr types ty env path ty_list
 
-and print_decl_value c indent h zone addr types ty env path ty_list =
+and print_decl_value c indent h addr types ty env path ty_list =
     match
       try `Value (Env.find_type path env) with exn -> `Exception exn with
  | `Exception exn ->
@@ -414,14 +417,14 @@ and print_decl_value c indent h zone addr types ty env path ty_list =
       linked, either because it is only a .mli file, or because a .ml
       file contains only type definitions.
    *)
-   debug_path (print_typed_value c indent h zone addr types)
+   debug_path (print_typed_value c indent h addr types)
      (Printf.sprintf "WARNING: %S is not in env" (Path.name path))
  | `Value decl ->
 
    match decl.type_kind with
    | Type_abstract ->
      (* we could expand a potential manifest type... *)
-     debug_path (print_typed_value c indent h zone addr types) "Type_abstract"
+     debug_path (print_typed_value c indent h addr types) "Type_abstract"
    | Type_variant constr_list ->
      let tag =
        Cstr_block h.tag
@@ -444,7 +447,7 @@ and print_decl_value c indent h zone addr types ty env path ty_list =
 #if OCAML_VERSION >= "4.03"
       match constr_args with
       | Cstr_record lbl_list ->
-        print_record c indent  h zone addr env ty decl path ty_list lbl_list
+        print_record c indent  h addr env ty decl path ty_list lbl_list
       | Cstr_tuple constr_args ->
 #endif
        match
@@ -455,14 +458,14 @@ and print_decl_value c indent h zone addr types ty env path ty_list =
          with  Ctype.Cannot_apply as exn -> `Exception exn
        with
        | `Exception exn ->
-         debug_path (print_typed_value c indent h zone addr types)
+         debug_path (print_typed_value c indent h addr types)
            (Printf.sprintf "%s (Ctype.Cannot_apply)" constr_name)
        | `Value ty_args ->
          let ty_args = Array.of_list ty_args in
          let len = Array.length ty_args in
          if len <> h.wosize then
            debug_path
-             (print_typed_value c indent h zone addr types)
+             (print_typed_value c indent h addr types)
              (Printf.sprintf
                 "WARNING(%s size %d <> block size %d)" constr_name
                 len h.wosize)
@@ -474,15 +477,15 @@ and print_decl_value c indent h zone addr types ty env path ty_list =
 
 
    | Type_record(lbl_list, rep) ->
-     print_record c indent  h zone addr env ty decl path ty_list lbl_list
+     print_record c indent  h addr env ty decl path ty_list lbl_list
 
 #if OCAML_VERSION < "4.02"
 #else
    | Type_open ->
-     debug_path (print_typed_value c indent h zone addr types) "Type_open"
+     debug_path (print_typed_value c indent h addr types) "Type_open"
 #endif
 
-and print_record c indent  h zone addr env ty decl path ty_list lbl_list =
+and print_record c indent  h addr env ty decl path ty_list lbl_list =
 
      let fields = List.mapi (fun pos lbl ->
        let (lbl_name, lbl_arg) = label_name_arg lbl
@@ -524,7 +527,7 @@ and print_record c indent  h zone addr env ty decl path ty_list lbl_list =
 
 
  and print_list_value c indent env ty addr i =
-     if i = 5 then
+     if i = 5 && (not !vf) then
        [indent, "... </list>", ""]
      else
        let head_v = LLDBUtils.getMem64 c.process
@@ -539,7 +542,7 @@ and print_record c indent  h zone addr env ty decl path ty_list lbl_list =
            print_list_value c indent env ty tail_addr (i+1)
 
  and print_raw_value c indent h addr =
-     if indent > !max_indent then
+     if indent > !max_indent && (not !vf) then
        [ indent, "...", "" ]
      else
        if h.tag < 251 then
@@ -572,7 +575,7 @@ and print_record c indent  h zone addr env ty decl path ty_list lbl_list =
      if i = len then
        [ indent, "</block>", "?" ]
      else
-       if i = 5 then
+       if i = 5 && (not !vf) then
          [ indent+2, "...", "_"; indent, "</block>", "" ]
        else
          let v = LLDBUtils.getMem64 c.process
@@ -605,7 +608,7 @@ and print_record c indent  h zone addr env ty decl path ty_list lbl_list =
      if i = len then
        [ indent, "</array>", "" ]
      else
-       if i = 5 then
+       if i = 5 && (not !vf) then
          [ indent+2, "...", "_"; indent, "</array>", "" ]
        else
          let v = LLDBUtils.getMem64 c.process
@@ -621,7 +624,7 @@ and print_record c indent  h zone addr env ty decl path ty_list lbl_list =
 
 
 
-let print_value target mem heap initial_addr types =
+let print_value target mem heap initial_addr types verbose =
 #ifndef OCAML_NON_OCP
   let loctbls, locs = if mem.standard_header then
       [||], { locs_env = Memprof_env.initial;
@@ -632,6 +635,7 @@ let print_value target mem heap initial_addr types =
       LLDBOCamlLocids.load target
   in
 #endif
+  vf := verbose;
   let process = SBTarget.getProcess target in
   let c = {
     process; mem; heap;
@@ -648,4 +652,5 @@ let print_value target mem heap initial_addr types =
       print_string ty;
     end;
     print_newline ()
-  ) lines
+  ) lines;
+  vf := false;

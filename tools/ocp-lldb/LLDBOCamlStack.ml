@@ -51,7 +51,7 @@ let print_args target mem heap nargs =
   for i = 0 to nargs - 1 do
     Printf.printf "arg[%d]=" i;
     LLDBOCamlValue.print_value target mem heap
-      (get_reg64_value regs arg_regs.(i)) [];
+      (get_reg64_value regs arg_regs.(i)) [] false;
     Printf.printf "\n%!";
   done;
   (*
@@ -83,4 +83,4 @@ let print_reg target mem heap reg =
   let regs = SBFrame.getRegisters frame in
   let regs = SBValueList.to_array regs in
   LLDBOCamlValue.print_value target mem heap
-    (get_reg64_value regs reg) [];
+    (get_reg64_value regs reg) [] false;
