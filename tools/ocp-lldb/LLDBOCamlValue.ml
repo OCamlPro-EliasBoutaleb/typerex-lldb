@@ -87,7 +87,7 @@ let tree_of_qualified lookup_fun env ty_path name =
 let pointer_kind mem heap addr =
   let range =  (addr,Int64.add addr 1L) in
   if Int64.logand addr 1L <> 0L then
-    External
+    Value
   else
     if
       addr >= heap.caml_young_start && addr <= heap.caml_young_end
@@ -105,7 +105,7 @@ let pointer_kind mem heap addr =
             let m = ChunkMap.find range mem.code_fragments in
             ModuleCode m
           with Not_found ->
-            External
+            Pointer
 
 let debug_path s path =
   match s with
@@ -218,8 +218,13 @@ let rec print_gen_value c indent addr types =
           (indent, descr, ty) :: tail
 #endif
     end
-  | External ->
+  | Value ->
     print_typed_int c indent addr types
+  | Pointer ->
+    try
+      let v = LLDBUtils.getMem64 c.process addr in
+      if Int64.logand v 1L = 0L then print_typed_int c indent v types else print_typed_int c indent addr types
+    with _ -> [indent, Printf.sprintf "error: should be a ptr : %Lx" addr, ""]
 
 and print_typed_int c indent n types =
   let shadowed_n = n in

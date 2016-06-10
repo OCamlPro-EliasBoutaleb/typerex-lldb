@@ -115,4 +115,5 @@ type pointer_kind =
 | MajorAddress
 | ModuleCode of string
 | ModuleData of string
-| External
+| Pointer
+| Value
