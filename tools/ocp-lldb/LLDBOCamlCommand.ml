@@ -250,35 +250,30 @@ let ocaml_print_locals debugger var vf =
   let heap = LLDBOCamlHeap.get_heap_info target in
   let mem = LLDBOCamlHeap.get_memory_info target in
 
-  let symtbl = Symtbl.vb_tbl in
+  let et = Symtbl.typ_tbl in
 
   if var = ""
   then begin
 
     let processed = ref [] in
 
-    let print value name typ =
+    let printt value name (e, t) =
+        let typ = Symtbl.print_type e t in
         if SBValue.isInScope value then begin
             let final = SBValue.getValueAsUnsigned1 value (-42L) in
             if final <> (-42L) then
-                let vs =
-                    if Int64.logand final Int64.one = Int64.zero
-                    then Printf.sprintf "(ptr) = 0x%Lx" final
-                    else Printf.sprintf "(val) = %Ld" (Int64.shift_right final 1) in
-                Printf.printf "%s : %s %s\n" name typ vs;
-                LLDBOCamlValue.print_value target mem heap final [] vf;
+                LLDBOCamlValue.print_value target mem heap final [(e, t)] vf
             else Printf.printf "%s : %s = not available\n" name typ
         end
         else Printf.printf "%s : %s = not in scope\n" name typ in
-
-    Hashtbl.iter (fun var (tl,typ,scope) ->
+    Hashtbl.iter (fun var (e,t) ->
         let cvalue = SBFrame.findVariable frame var in
         try
-          let n = SBValue.getName cvalue in print cvalue n typ; processed := n :: !processed
+          let n = SBValue.getName cvalue in printt cvalue n (e,t); processed := n :: !processed
         with _ ->
           let nv = SBFrame.findVariable frame (strip var) in
-          try let n = SBValue.getName nv in print nv n typ; processed := n :: !processed with _ -> ()
-    ) !symtbl;
+          try let n = SBValue.getName nv in printt nv n (e,t); processed := n :: !processed with _ -> ()
+    ) !et;
 
     let values = SBFrame.getVariables frame true true false true in
     let size = SBValueList.getSize values in
@@ -287,12 +282,15 @@ let ocaml_print_locals debugger var vf =
         let value = SBValueList.getValueAtIndex values i in
         let name = SBValue.getName value in
         if List.mem name !processed = false then begin
-            let (loc, typ, scope) =
-                try
-                Hashtbl.find !symtbl (strip name)
-                with _ -> begin try Hashtbl.find !symtbl name with _ ->
 
-                    (Location.none, "type not found", "") end in
+            let re =
+                try
+                    [Hashtbl.find !et (strip name)]
+                with _ -> begin try [Hashtbl.find !et name] with _ -> [] end in
+            let typ =
+                match re with
+                | [] -> Printf.printf "var %s %s\n" name (strip name); "type not available"
+                | hd :: _ -> Symtbl.print_type (fst hd) (snd hd) in
 
             if SBValue.isInScope value then begin
                 let final = SBValue.getValueAsUnsigned1 value (-42L) in
@@ -302,7 +300,7 @@ let ocaml_print_locals debugger var vf =
                         then "ptr"
                         else "val" in
                     Printf.printf "%s : %s (%s) = " name typ vs;
-                    LLDBOCamlValue.print_value target mem heap final [] vf;
+                    LLDBOCamlValue.print_value target mem heap final re vf;
                 else Printf.printf "%s : %s = not available\n" name typ
             end
             else Printf.printf "%s : %s = not in scope\n" name typ

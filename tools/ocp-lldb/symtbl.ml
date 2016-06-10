@@ -14,6 +14,7 @@ let id_to_string s =
     flush_str_formatter ()
 
 let vb_tbl = ref @@ Hashtbl.create 100
+let typ_tbl = ref @@ Hashtbl.create 100
 let sc = ref []
 
 let while_cnt = ref 0
@@ -100,6 +101,9 @@ module IterArg = struct
     let gen_type = print_type bind.vb_expr.exp_env bind.vb_expr.exp_type in
     Hashtbl.add !vb_tbl ident (bind.vb_expr.exp_loc, gen_type, final_scope);
 
+    let strip s = List.hd @@ Str.split (Str.regexp "/") s in
+    Hashtbl.add !typ_tbl (strip ident) (bind.vb_expr.exp_env, bind.vb_expr.exp_type);
+
     Printf.printf "processed %s : [%s]\n" ident (print_stack !sc);
 
     match bind.vb_pat.pat_desc with
@@ -153,5 +157,6 @@ module MyIterator = TypedtreeIter.MakeIterator (IterArg)
 let vb structure =
   MyIterator.iter_structure structure;
   Printf.printf "got %d vbs\n" (Hashtbl.length !vb_tbl);
-  Hashtbl.iter (fun k (tl,ty,scope) ->  Printf.printf "%s : %s with scope inside %s\n" k ty scope) !vb_tbl
+  Hashtbl.iter (fun k (tl,ty,scope) ->  Printf.printf "%s : %s with scope inside %s\n" k ty scope) !vb_tbl;
+  Printf.printf "got %d ids and typ\n" (Hashtbl.length !typ_tbl)
 
