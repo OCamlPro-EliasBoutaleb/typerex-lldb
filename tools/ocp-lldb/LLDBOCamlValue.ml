@@ -120,7 +120,6 @@ let label_name_arg = function
 #else
     { ld_id = lbl_name; ld_type = lbl_arg } -> (lbl_name, lbl_arg)
 #endif
-;;
 
 let constructor_info
 #if OCAML_VERSION < "4.02"
@@ -129,7 +128,6 @@ let constructor_info
     { cd_id =constr_name; cd_args = constr_args; cd_res = ret_type }
 #endif
     = (constr_name, constr_args,ret_type)
-;;
 
 type context = {
   mem : LLDBTypes.mem_info;
@@ -140,8 +138,78 @@ type context = {
 #endif
 }
 
+type value_type =
+    List of Env.t * type_expr
+  | Array of Env.t * type_expr
+  | Option of Env.t * type_expr
+  | FLOAT | INT32 | INT64 | CHAR | BOOL | STR | INT | NINT | UNIT | Nope
+
+let find_type (env, ty) =
+  let ty = Ctype.expand_head env ty in
+    match ty.desc with
+    | Tlink _ -> assert false
+    | Tvar _
+    | Tarrow (_, _, _, _)
+    | Ttuple _
+    | Tobject (_, _)
+    | Tfield (_, _, _, _)
+    | Tnil
+    | Tsubst _
+    | Tvariant _
+    | Tunivar _
+    | Tpoly (_, _)
+    | Tpackage (_, _, _) -> Nope
+
+    | Tconstr (path, [ty_arg], _) ->
+      if Path.same path Predef.path_list then begin
+          List (env, ty_arg)
+      end else
+      if Path.same path Predef.path_array then begin
+          Array (env, ty_arg)
+      end else
+      if Path.same path Predef.path_option then begin
+          Option (env, ty_arg)
+      end else
+          Nope
+
+    | Tconstr (path, [], _) ->
+      if Path.same path Predef.path_float then begin
+          FLOAT
+      end else
+      if Path.same path Predef.path_int32 then begin
+          INT32
+      end else
+      if Path.same path Predef.path_int64 then begin
+          INT64
+      end else
+      if Path.same path Predef.path_nativeint then begin
+          NINT
+      end else
+      if Path.same path Predef.path_string then begin
+          STR
+      end else
+      if Path.same path Predef.path_int then begin
+          INT
+      end else
+      if Path.same path Predef.path_char then begin
+          CHAR
+      end else
+      if Path.same path Predef.path_bool then begin
+          BOOL
+      end else
+      if Path.same path Predef.path_unit then begin
+          UNIT
+      end else
+          Nope
+
+    | _ -> Nope
+
+let get_header_of_block c v =
+  let header = LLDBUtils.getMem64 c.process (Int64.sub v 8L) in
+  LLDBOCamlDatarepr.parse_header c.mem header
+
 #ifdef OCAML_NON_OCP
-let string_of_type_expr env ty = ""
+let string_of_type_expr env ty = Symtbl.print_type env ty
 #else
 let string_of_type_expr env ty = GcprofLocations.string_of_type_expr env ty
 #endif
@@ -157,14 +225,7 @@ let rec print_gen_value c indent addr types =
   | MajorAddress
   | ModuleData _ as zone ->
     begin
-    let header = LLDBUtils.getMem64 c.process (Int64.sub addr 8L) in
-    let h = LLDBOCamlDatarepr.parse_header c.mem header in
-    let zone = match zone with
-      | MinorAddress -> "minor"
-      | MajorAddress -> "major"
-      | ModuleData m -> Printf.sprintf "data %s" m
-      | _ -> assert false
-    in
+    let h = get_header_of_block c addr in
 #ifndef OCAML_NON_OCP
     match h.locid with
     | None ->
@@ -218,131 +279,7 @@ let rec print_gen_value c indent addr types =
           (indent, descr, ty) :: tail
 #endif
     end
-  | Value ->
-    print_typed_int c indent addr types
-  | Pointer ->
-    try
-      let v = LLDBUtils.getMem64 c.process addr in
-      if Int64.logand v 1L = 0L then print_typed_int c indent v types else print_typed_int c indent addr types
-    with _ -> [indent, Printf.sprintf "error: should be a ptr : %Lx" addr, ""]
-
-and print_typed_int c indent n types =
-  let shadowed_n = n in
-  match types with
-  | [] -> [ indent, Printf.sprintf "Val %Ld" (Int64.shift_right n 1), ""]
-  | (env, ty) :: types ->
-    let ty = Ctype.expand_head env ty in
-    let s =
-      match ty.desc with
-      | Tlink _ -> assert false
-      | Tvar _
-      | Tarrow (_, _, _, _)
-      | Ttuple _
-      | Tobject (_, _)
-      | Tfield (_, _, _, _)
-      | Tnil
-      | Tsubst _
-      | Tvariant _
-      | Tunivar _
-      | Tpoly (_, _)
-      | Tpackage (_, _, _) -> print_typed_int c indent n types
-
-      | Tconstr (path, _, _) ->
-        if Path.same path Predef.path_float then begin
-          [ indent, Printf.sprintf "%f" (Int64.float_of_bits n), ""]
-        end else
-        if Path.same path Predef.path_int32 then begin
-            let v = LLDBUtils.getMem64 c.process
-              (Int64.add n (Int64.of_int (8))) in
-          [ indent, Printf.sprintf "%ld" (Int64.to_int32 v), ""]
-        end else
-        if Path.same path Predef.path_int64 then begin
-            let v = LLDBUtils.getMem64 c.process
-              (Int64.add n (Int64.of_int (8))) in
-          [ indent, Printf.sprintf "%Ld" v, ""]
-        end else
-        if Path.same path Predef.path_nativeint then begin
-            let v = LLDBUtils.getMem64 c.process
-              (Int64.add n (Int64.of_int (8))) in
-          [ indent, Printf.sprintf "%nd" (Int64.to_nativeint v), ""]
-        end else
-        if Path.same path Predef.path_string then begin
-          let addr = n in
-          let header = LLDBUtils.getMem64 c.process (Int64.sub addr 8L) in
-          let h = LLDBOCamlDatarepr.parse_header c.mem header in
-          print_raw_value c indent h addr
-        end else
-        if Path.same path Predef.path_list then begin
-          let addr = n in
-          let header = LLDBUtils.getMem64 c.process (Int64.sub addr 8L) in
-          let h = LLDBOCamlDatarepr.parse_header c.mem header in
-          print_typed_value c indent h addr types
-        end else
-        let n = Int64.to_int (Int64.shift_right n 1) in
-        if Path.same path Predef.path_int then begin
-          [ indent, string_of_int n, "" ]
-        end else
-        if Path.same path Predef.path_char then begin
-          let s =
-            if n >= 0 && n < 256 then
-              Printf.sprintf "%C" (char_of_int n)
-            else Printf.sprintf "invalid(char,%d)" n in
-          [ indent, s, "" ]
-        end else
-          if Path.same path Predef.path_bool then begin
-            let s = match n with
-            | 0 -> "false"
-            | 1 -> "true"
-            | _ -> Printf.sprintf "invalid(bool,%d)" n in
-          [ indent, s, "" ]
-        end else
-        if Path.same path Predef.path_unit then begin
-            let s = match n with
-            | 0 -> "()"
-            | _ -> Printf.sprintf "invalid(unit,%d)" n in
-          [ indent, s, "" ]
-        end else
-        if Path.same path Predef.path_option then begin
-            let s = match n with
-            | 0 -> "None"
-            | _ -> Printf.sprintf "invalid(option,%d)" n in
-          [ indent, s, "" ]
-        end else
-          let n = shadowed_n in
-          match
-            (try `Value (Env.find_type path env) with exn -> `Exception exn)
-          with
-          | `Exception exn ->
-            debug_path (print_typed_int c indent n types)
-              (Printf.sprintf "WARNING: %S is not in env" (Path.name path))
-            | `Value decl ->
-              match decl.type_kind with
-              | Type_variant constr_list ->
-                let tag = Cstr_constant (Int64.to_int n) in
-                let (constr_name, constr_args,ret_type) =
-                  constructor_info
-                    (Datarepr.find_constr_by_tag tag constr_list) in
-                [ indent, Ident.name constr_name, "" ]
-#if OCAML_VERSION < "4.02"
-#else
-              | Type_open ->
-               debug_path (print_typed_int c indent n types) "Type_open"
-#endif
-              | Type_abstract ->
-
-               debug_path (print_typed_int c indent n types) "Type_abstract"
-              | Type_record _ ->
-               debug_path (print_typed_int c indent n types) "Type_record"
-    in
-    match s with
-    | [] -> assert false
-    | (indent, head, type_info) :: tail ->
-      let type_info = if type_info = "" then
-          let s = string_of_type_expr env ty in
-          if s <> "'a" then s else ""
-        else type_info in
-      (indent, head, type_info) :: tail
-
+  | Value | Pointer -> print_value c indent addr types
 
 and print_typed_value c indent h addr types =
   match types with
@@ -488,46 +425,83 @@ and print_decl_value c indent h addr types ty env path ty_list =
      debug_path (print_typed_value c indent h addr types) "Type_open"
 #endif
 
-and print_record c indent  h addr env ty decl path ty_list lbl_list =
+and print_value c indent addr types =
+  match types with
+    | [] -> [indent, Printf.sprintf "Val %Ld - %Ld" addr (Int64.shift_right addr 1), ""]
+    | (env, ty) :: types ->
+      let s = print_typed_valueh c indent addr (env,ty) in
+        match s with
+        | [] -> assert false
+        | (indent, head, type_info) :: tail ->
+          let type_info = if type_info = "" then
+              let s = string_of_type_expr env ty in
+              if s <> "'a" then s else ""
+            else type_info in
+          (indent, head, type_info) :: tail
 
-     let fields = List.mapi (fun pos lbl ->
-       let (lbl_name, lbl_arg) = label_name_arg lbl
-       in
-       (pos, lbl_name, lbl_arg)) lbl_list in
+and print_typed_valueh c indent v (env,ty) =
+  let ocaml_value = Int64.to_int (Int64.shift_right v 1) in
+  let type_res = find_type (env, ty) in
+  match type_res with
+    | FLOAT -> print_float indent v
+    | INT -> print_int indent ocaml_value
+    | BOOL -> print_bool indent ocaml_value
+    | UNIT -> print_unit indent ocaml_value
+    | CHAR -> print_ch indent ocaml_value
+    | INT32 | INT64 | NINT -> print_boxed_value c indent v type_res
+    | STR ->
+          let h = get_header_of_block c v in print_raw_value c indent h v
+    | List (env,tys) ->
+      (indent, "<list>", "") ::
+        print_list_value c indent env tys v 0
+    | Array (envv,tty) ->
+      let h = get_header_of_block c v in
+      (indent,
+       Printf.sprintf "<array[%d]>" h.wosize,
+       string_of_type_expr env ty) ::
+           (print_array (envv,tty) c indent v 0 h.wosize)
+    | Option (env, ty) ->
+      print_option c indent env ty v
+    | _ -> [indent, "typed value unhandled", ""]
 
+and print_float indent n =
+  [ indent, Printf.sprintf "%f" (Int64.float_of_bits n), ""]
 
-     (indent, "{",
-      string_of_type_expr env ty
-     ) ::
-       (List.flatten
-          (List.map (fun (pos, lbl_name, lbl_arg) ->
-            let types =
-              try
-                [env,
-                 Ctype.apply env decl.type_params
-                   lbl_arg ty_list]
-              with
-              | Ctype.Cannot_apply -> []
-            in
-            let name = Ident.name lbl_name in
-                 (* PR#5722: print full module path only
-                    for first record field *)
-            let lid =
-              if pos = 0 then tree_of_label env path name
-              else name in
-            let v = LLDBUtils.getMem64 c.process
-              (Int64.add addr (Int64.of_int (8 * pos))) in
-            let s = print_gen_value c (indent+4) v types in
-            match s with
-            | [] -> assert false
-            | (_, head, ty) :: tail ->
-              (indent+2,
-               Printf.sprintf "%s= %s" lid head,
-               ty) :: tail
-           )
-             fields)) @
-       [ indent, "}", "" ]
+and print_int indent n =
+  [ indent, string_of_int n, "" ]
 
+and print_ch indent n =
+  let s =
+    if n >= 0 && n < 256 then
+      Printf.sprintf "%C" (char_of_int n)
+    else Printf.sprintf "invalid(char,%d)" n in [ indent, s, "" ]
+
+and print_bool indent n =
+  let s =
+    match n with
+      | 0 -> "false"
+      | 1 -> "true"
+      | _ -> Printf.sprintf "invalid(bool,%d)" n in [ indent, s, "" ]
+
+and print_unit indent n =
+  let s =
+    match n with
+      | 0 -> "()"
+      | _ -> Printf.sprintf "invalid(unit,%d)" n in [ indent, s, "" ]
+
+and print_option c indent env ty n =
+  let s =
+    match Int64.compare n Int64.one with
+      | 0 -> "None"
+      | _ -> Printf.sprintf "invalid(option,0x%Lx)" n in [ indent, s, "" ]
+
+and print_boxed_value c indent n tr =
+  let v = LLDBUtils.getMem64 c.process (Int64.add n (Int64.of_int (8))) in
+  match tr with
+    | INT32 -> [ indent, Printf.sprintf "%ld" (Int64.to_int32 v), ""]
+    | INT64 -> [ indent, Printf.sprintf "%Ld" v, ""]
+    | NINT -> [ indent, Printf.sprintf "%nd" (Int64.to_nativeint v), ""]
+    | _ -> [indent, "boxed value unhandled", ""]
 
  and print_list_value c indent env ty addr i =
      if i = 5 && (not !vf) then
@@ -655,6 +629,46 @@ and print_record c indent  h addr env ty decl path ty_list lbl_list =
              :: tail
          in
          s @ print_array (env, ty_arg) c indent addr (i+1) len
+
+and print_record c indent  h addr env ty decl path ty_list lbl_list =
+
+     let fields = List.mapi (fun pos lbl ->
+       let (lbl_name, lbl_arg) = label_name_arg lbl
+       in
+       (pos, lbl_name, lbl_arg)) lbl_list in
+
+
+     (indent, "{",
+      string_of_type_expr env ty
+     ) ::
+       (List.flatten
+          (List.map (fun (pos, lbl_name, lbl_arg) ->
+            let types =
+              try
+                [env,
+                 Ctype.apply env decl.type_params
+                   lbl_arg ty_list]
+              with
+              | Ctype.Cannot_apply -> []
+            in
+            let name = Ident.name lbl_name in
+                 (* PR#5722: print full module path only
+                    for first record field *)
+            let lid =
+              if pos = 0 then tree_of_label env path name
+              else name in
+            let v = LLDBUtils.getMem64 c.process
+              (Int64.add addr (Int64.of_int (8 * pos))) in
+            let s = print_gen_value c (indent+4) v types in
+            match s with
+            | [] -> assert false
+            | (_, head, ty) :: tail ->
+              (indent+2,
+               Printf.sprintf "%s= %s" lid head,
+               ty) :: tail
+           )
+             fields)) @
+       [ indent, "}", "" ]
 
 
 
