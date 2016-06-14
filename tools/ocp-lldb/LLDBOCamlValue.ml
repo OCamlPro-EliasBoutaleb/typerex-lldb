@@ -142,7 +142,19 @@ type value_type =
     List of Env.t * type_expr
   | Array of Env.t * type_expr
   | Option of Env.t * type_expr
+  | Ref of Env.t * type_expr
   | FLOAT | INT32 | INT64 | CHAR | BOOL | STR | INT | NINT | UNIT | Nope
+
+let find_decl_value ty env path ty_list =
+ match Env.find_type path env with
+ | exception exn -> Nope
+ | decl ->
+
+   match decl.type_kind with
+   | Type_record _
+   | Type_variant _
+   | Type_open
+   | Type_abstract -> Nope
 
 let find_type (env, ty) =
   let ty = Ctype.expand_head env ty in
@@ -170,7 +182,11 @@ let find_type (env, ty) =
       if Path.same path Predef.path_option then begin
           Option (env, ty_arg)
       end else
-          Nope
+      if Path.name path = "Pervasives.ref" then begin
+          Ref (env, ty_arg)
+      end else begin
+          find_decl_value ty env path [ty_arg]
+      end
 
     | Tconstr (path, [], _) ->
       if Path.same path Predef.path_float then begin
@@ -202,7 +218,8 @@ let find_type (env, ty) =
       end else
           Nope
 
-    | _ -> Nope
+    | Tconstr(path, ty_list, _) ->
+      find_decl_value ty env path ty_list
 
 let get_header_of_block c v =
   let header = LLDBUtils.getMem64 c.process (Int64.sub v 8L) in
@@ -235,7 +252,7 @@ let rec print_gen_value c indent addr types =
             addr header h.tag h.wosize h.gc
             zone
             (string_of_tag h.tag); *)
-      print_typed_value c indent h addr types
+      print_value c indent addr types
 #ifndef OCAML_NON_OCP
     | Some locid ->
       (*    Printf.eprintf
@@ -262,9 +279,12 @@ let rec print_gen_value c indent addr types =
       let types =
         match li.loc_type with
         | (Not_applicable | RecClosure _) -> types
-        | Expr ty -> (env, ty) :: types
+        | Expr ty -> begin
+              (*if the type in the locid is alpha, keep the most accurate type*)
+              let s = GcprofLocations.string_of_type_expr env ty in
+              if s = "'a" then types else (env, ty) :: types end
       in
-      let s = print_typed_value c indent h addr types in
+      let s = print_value c indent addr types in
       match loc_info with
       | None -> s
       | Some loc_info ->
@@ -279,7 +299,8 @@ let rec print_gen_value c indent addr types =
           (indent, descr, ty) :: tail
 #endif
     end
-  | Value | Pointer -> print_value c indent addr types
+  | Value -> print_value c indent addr types
+  | Pointer -> let nv = LLDBUtils.getMem64 c.process addr in print_value c indent nv types
 
 and print_typed_value c indent h addr types =
   match types with
@@ -443,7 +464,8 @@ and print_typed_valueh c indent v (env,ty) =
   let ocaml_value = Int64.to_int (Int64.shift_right v 1) in
   let type_res = find_type (env, ty) in
   match type_res with
-    | FLOAT -> print_float indent v
+    | FLOAT -> begin
+        try let h = get_header_of_block c v in print_raw_value c indent h v with _ -> print_float indent v end
     | INT -> print_int indent ocaml_value
     | BOOL -> print_bool indent ocaml_value
     | UNIT -> print_unit indent ocaml_value
@@ -456,12 +478,17 @@ and print_typed_valueh c indent v (env,ty) =
         print_list_value c indent env tys v 0
     | Array (envv,tty) ->
       let h = get_header_of_block c v in
+      if h.tag = 254 then print_raw_value c indent h v else
       (indent,
        Printf.sprintf "<array[%d]>" h.wosize,
        string_of_type_expr env ty) ::
            (print_array (envv,tty) c indent v 0 h.wosize)
     | Option (env, ty) ->
       print_option c indent env ty v
+    | Ref (env, ty) ->
+      let nv = LLDBUtils.getMem64 c.process v in
+      (indent, "<ref>", "") ::
+      print_typed_valueh c (indent+2) nv (env,ty)
     | _ -> [indent, "typed value unhandled", ""]
 
 and print_float indent n =
@@ -490,10 +517,10 @@ and print_unit indent n =
       | _ -> Printf.sprintf "invalid(unit,%d)" n in [ indent, s, "" ]
 
 and print_option c indent env ty n =
-  let s =
     match Int64.compare n Int64.one with
-      | 0 -> "None"
-      | _ -> Printf.sprintf "invalid(option,0x%Lx)" n in [ indent, s, "" ]
+      | 0 -> [indent, "None", ""]
+      | _ ->  let nv = LLDBUtils.getMem64 c.process n in
+              print_typed_valueh c (indent+2) nv (env,ty)
 
 and print_boxed_value c indent n tr =
   let v = LLDBUtils.getMem64 c.process (Int64.add n (Int64.of_int (8))) in
@@ -545,7 +572,21 @@ and print_boxed_value c indent n tr =
            let v = LLDBUtils.getMem64 c.process addr in
           [ indent, Printf.sprintf "%f" (Int64.float_of_bits v), "float"]
 
-         | 254 -> [ indent, Printf.sprintf "%f" (Int64.float_of_bits addr), "float"]
+         | 254 ->
+           let res = ref [] in
+           for i = 0 to h.wosize - 1 do
+               let v = LLDBUtils.getMem64 c.process
+               (Int64.add addr (Int64.of_int (i * 8))) in
+               let s = [ indent+2, Printf.sprintf "%f" (Int64.float_of_bits v), "float"] in
+               let s = match s with
+               | [] -> assert false
+               | (_, head, ty) :: tail ->
+                       (indent+2, Printf.sprintf "%d: %s" i head, ty)
+                       :: tail
+               in
+             res := !res @ s
+           done;
+           !res
 
          | 255 -> begin
            let structop = LLDBUtils.getMem64 c.process addr in
