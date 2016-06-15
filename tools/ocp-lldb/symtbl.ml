@@ -31,7 +31,7 @@ module IterArg = struct
   let enter_expression expr =
     let curr_scope = try List.hd !sc with _ -> "toplevel" in
     match expr.exp_desc with
-    | Texp_let (rf, (lvb::_ as l), e) ->
+    | Texp_let (rf, (lvb::_), e) ->
         begin
         match lvb.vb_expr.exp_desc with
         | Texp_let (_, _, _) ->
@@ -87,7 +87,7 @@ module IterArg = struct
     let saved_let = ref "" in
     begin
     match bind.vb_expr.exp_desc with
-    | Texp_let (rf, (lvb::_ as l), e) ->
+    | Texp_let (rf, (lvb::_), e) ->
         begin
         match bind.vb_pat.pat_desc with
           | Tpat_var (s,_) ->
@@ -116,7 +116,7 @@ module IterArg = struct
               begin
                 if ns <> final_scope then begin Printf.printf "pushing func %s : [%s]\n" ns (print_stack !sc); sc := ns :: !sc end
               end
-          | Texp_let (rf, (lvb::_ as l), e) ->
+          | Texp_let (rf, (lvb::_), e) ->
               begin
                   if ns = !saved_let then begin Printf.printf "%s are same must restore tempor\n" ns; saved_let := ""; sc := ns :: !sc end;
                 if final_scope = "toplevel" then sc := ns :: !sc
@@ -161,6 +161,9 @@ let vb structure =
   MyIterator.iter_structure structure;
   Printf.printf "got %d vbs\n" (Hashtbl.length !vb_tbl);
   Hashtbl.iter (fun k (tl,ty,scope) ->  Printf.printf "%s : %s with scope inside %s\n" k ty scope) !vb_tbl;
-  Printf.printf "got %d ids and typ\n" (Hashtbl.length !typ_tbl)
-  (*;let res = (!typ_tbl, !tydecl_tbl) in Hashtbl.clear !typ_tbl; Hashtbl.clear !tydecl_tbl; res*)
+  Printf.printf "got %d ids and typ\n" (Hashtbl.length !typ_tbl);
+  Printf.printf "got %d tyd\n" (Hashtbl.length !tydecl_tbl);
+  let res = (Hashtbl.copy !typ_tbl, Hashtbl.copy !tydecl_tbl, Hashtbl.copy !vb_tbl) in
+  Hashtbl.clear !typ_tbl; Hashtbl.clear !tydecl_tbl; Hashtbl.clear !vb_tbl;
+  res
 

@@ -27,6 +27,11 @@ open LLDBOCaml
 open LLDBTypes
 open LLDBGlobals
 
+let get_current_module target =
+  let (inited, globals_map) = LLDBOCamlGlobals.load_globals_map target in
+  let (curr_modname, _, _, _) = globals_map.(inited) in
+  curr_modname
+
 let ocaml_break_narg1 debugger funname =
   let target = SBDebugger.getSelectedTarget debugger in
   let ima = LLDBOCamlCode.get_compilation_units target in
@@ -250,87 +255,92 @@ let ocaml_print_locals debugger var vf =
   let heap = LLDBOCamlHeap.get_heap_info target in
   let mem = LLDBOCamlHeap.get_memory_info target in
 
-  let et = Symtbl.typ_tbl in
+  let (inited, globals_map) = LLDBOCamlGlobals.load_globals_map target in
+  let (curr_modname, _, _, _) = globals_map.(inited) in
+  match LLDBOCamlTypes.load_tt target curr_modname with
+  | Some (et, tds, _) -> begin
 
-  if var = ""
-  then begin
+    if var = ""
+    then begin
 
-    let processed = ref [] in
+      let processed = ref [] in
 
-    let printt value name (e, t) =
+      let printt value name (e, t) =
         let typ = Symtbl.print_type e t in
         if SBValue.isInScope value then begin
             let final = SBValue.getValueAsUnsigned1 value (-42L) in
             if final <> (-42L) then
-                LLDBOCamlValue.print_value target mem heap final [(e, t)] vf
+                LLDBOCamlValue.print_value target mem heap final [(e, t)] tds vf
             else Printf.printf "%s : %s = not available\n" name typ
         end
         else Printf.printf "%s : %s = not in scope\n" name typ in
-    Hashtbl.iter (fun var (e,t) ->
+      Hashtbl.iter (fun var (e,t) ->
         let cvalue = SBFrame.findVariable frame var in
         try
           let n = SBValue.getName cvalue in printt cvalue n (e,t); processed := n :: !processed
         with _ ->
           let nv = SBFrame.findVariable frame (strip var) in
           try let n = SBValue.getName nv in printt nv n (e,t); processed := n :: !processed with _ -> ()
-    ) !et;
+      ) et;
 
-    let values = SBFrame.getVariables frame true true false true in
-    let size = SBValueList.getSize values in
-    for i = 0 to size - 1 do
+      let values = SBFrame.getVariables frame true true false true in
+      let size = SBValueList.getSize values in
+      for i = 0 to size - 1 do
 
         let value = SBValueList.getValueAtIndex values i in
         let name = SBValue.getName value in
         if List.mem name !processed = false then begin
+          let re =
+              try
+                  [Hashtbl.find et (strip name)]
+              with _ -> begin try [Hashtbl.find et name] with _ -> [] end in
+          let typ =
+              match re with
+              | [] -> Printf.printf "var %s %s\n" name (strip name); "type not available"
+              | hd :: _ -> Symtbl.print_type (fst hd) (snd hd) in
 
-            let re =
-                try
-                    [Hashtbl.find !et (strip name)]
-                with _ -> begin try [Hashtbl.find !et name] with _ -> [] end in
-            let typ =
-                match re with
-                | [] -> Printf.printf "var %s %s\n" name (strip name); "type not available"
-                | hd :: _ -> Symtbl.print_type (fst hd) (snd hd) in
-
-            if SBValue.isInScope value then begin
-                let final = SBValue.getValueAsUnsigned1 value (-42L) in
-                if final <> (-42L) then
-                    let vs =
-                        if Int64.logand final Int64.one = Int64.zero
-                        then "ptr"
-                        else "val" in
-                    Printf.printf "%s : %s (%s) = " name typ vs;
-                    LLDBOCamlValue.print_value target mem heap final re vf;
-                else Printf.printf "%s : %s = not available\n" name typ
-            end
-            else Printf.printf "%s : %s = not in scope\n" name typ
+          if SBValue.isInScope value then begin
+            let final = SBValue.getValueAsUnsigned1 value (-42L) in
+            if final <> (-42L) then
+                let vs =
+                    if Int64.logand final Int64.one = Int64.zero
+                    then "ptr"
+                    else "val" in
+                Printf.printf "%s : %s (%s) = " name typ vs;
+                LLDBOCamlValue.print_value target mem heap final re tds vf;
+            else Printf.printf "%s : %s = not available\n" name typ
+          end
+          else Printf.printf "%s : %s = not in scope\n" name typ
         end
-    done
+      done
 
-  end
-  else begin
-
-      (*TODO : lexical scope issue reappearing here*)
-
-    let value = SBFrame.findVariable frame var in
-
-    if SBValue.isInScope value then begin
-        let final = SBValue.getValueAsUnsigned1 value (-42L) in
-        if final <> (-42L) then Printf.printf "%Ld\n" final else Printf.printf "gdi\n"
     end
-    else Printf.printf "not in scope\n"
+    else begin
+
+        (*TODO : lexical scope issue reappearing here*)
+
+      let value = SBFrame.findVariable frame var in
+
+      if SBValue.isInScope value then begin
+          let final = SBValue.getValueAsUnsigned1 value (-42L) in
+          if final <> (-42L) then Printf.printf "%Ld\n" final else Printf.printf "gdi\n"
+      end
+      else Printf.printf "not in scope\n"
+    end
   end
+  | None -> Printf.printf "ttree not found\n"
 
-let ocaml_print_typeof var =
-  let symtbl = Symtbl.vb_tbl in
-  try
-      let (_, typ, _) = Hashtbl.find !symtbl var in Printf.printf "%s : %s\n" var typ
-  with _ -> Printf.printf "not found\n"
-
-let ocaml_load_types debugger modname =
+let ocaml_print_typeof debugger var =
   let target = SBDebugger.getSelectedTarget debugger in
-  LLDBOCamlTypes.load_tt target modname;
-  ()
+  let curr_modname = get_current_module target in
+  match LLDBOCamlTypes.load_tt target curr_modname with
+  | Some (_, _, symtbl) ->
+      begin
+      try
+          let (_, typ, _) = Hashtbl.find symtbl var in Printf.printf "%s : %s\n" var typ
+      with _ -> Printf.printf "not found\n"
+      end
+  | None -> Printf.printf "ttree not found\n"
 
 #ifndef OCAML_NON_OCP
 
@@ -419,8 +429,7 @@ let ocaml_command debugger args =
   | [ "print"; "var"; var_name] -> ocaml_print_locals debugger var_name false
   | [ "printv"; "locals"] -> ocaml_print_locals debugger "" true
   | [ "printv"; "var"; var_name] -> ocaml_print_locals debugger var_name true
-  | [ "typeof"; var_name] -> ocaml_print_typeof var_name
-  | [ "types"; modname ] -> ocaml_load_types debugger modname
+  | [ "typeof"; var_name] -> ocaml_print_typeof debugger var_name
 
 #ifndef OCAML_NON_OCP
   | [ "locids" ] -> ocaml_locids debugger

@@ -27,5 +27,6 @@ val print_value :
   LLDBTypes.heap_info ->
   int64 ->
   (Env.t * Types.type_expr) list ->
+  (string, Types.type_declaration) Hashtbl.t ->
   bool ->
   unit

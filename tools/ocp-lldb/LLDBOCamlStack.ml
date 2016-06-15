@@ -46,12 +46,13 @@ let print_args target mem heap nargs =
   let regs = SBValueList.to_array regs in
 
   let nargs = min (Array.length arg_regs) nargs in
+  let empty = Hashtbl.create 100 in
   Printf.printf "Printing %d arguments:\n" nargs;
 
   for i = 0 to nargs - 1 do
     Printf.printf "arg[%d]=" i;
     LLDBOCamlValue.print_value target mem heap
-      (get_reg64_value regs arg_regs.(i)) [] false;
+      (get_reg64_value regs arg_regs.(i)) [] empty false;
     Printf.printf "\n%!";
   done;
   (*
@@ -82,5 +83,6 @@ let print_reg target mem heap reg =
   let frame = SBThread.getSelectedFrame thread in
   let regs = SBFrame.getRegisters frame in
   let regs = SBValueList.to_array regs in
+  let empty = Hashtbl.create 100 in
   LLDBOCamlValue.print_value target mem heap
-    (get_reg64_value regs reg) [] false;
+    (get_reg64_value regs reg) [] empty false;

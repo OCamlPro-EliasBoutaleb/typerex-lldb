@@ -64,6 +64,6 @@ let load_tt target modname =
       let ttree_size = get_size_from_symbol target b in
       let t = get_ttree_from_symbol a (Int64.to_int ttree_size) in
       Printf.printf "ttree_size = 0x%Lx\n%!" ttree_size;
-      Symtbl.vb t
-  | None -> ()
+      Some (Symtbl.vb t)
+  | None -> None
 

@@ -43,6 +43,8 @@ let max_indent = ref 10
 (*verbose flag*)
 let vf = ref false
 
+let tydecl_tbl = ref @@ Hashtbl.create 100
+
 let string_of_tag tag =
   match tag with
   | 246 -> "lazy"
@@ -171,9 +173,9 @@ let find_decl_value ty env path ty_list =
 
  match Env.find_type path env with
    | exception exn -> begin
-     let tds = Symtbl.tydecl_tbl in
+     let tds = !tydecl_tbl in
      try
-       let td = Hashtbl.find !tds (Path.name path) in handle_decl td
+       let td = Hashtbl.find tds (Path.name path) in handle_decl td
      with _ -> Printf.printf "type decl not found\n"; Nope
    end
 
@@ -674,7 +676,7 @@ and print_block_variant c indent h addr env path decl ty ty_list constr_list =
   in (indent, Printf.sprintf "<%s>" constr_name, string_of_type_expr env ty) :: printed_args
 
 
-let print_value target mem heap initial_addr types verbose =
+let print_value target mem heap initial_addr types type_decls verbose =
 #ifndef OCAML_NON_OCP
   let loctbls, locs = if mem.standard_header then
       [||], { locs_env = Memprof_env.initial;
@@ -686,6 +688,7 @@ let print_value target mem heap initial_addr types verbose =
   in
 #endif
   vf := verbose;
+  tydecl_tbl := type_decls;
   let process = SBTarget.getProcess target in
   let c = {
     process; mem; heap;

@@ -91,7 +91,8 @@ let print_module_globals target mem heap modname =
       Printf.printf "  %s.%s -> %d\n%!" modname name i;
       let addr = Int64.add modaddr (Int64.of_int (i*8)) in
       let v = LLDBUtils.getMem64 process addr in
-      LLDBOCamlValue.print_value target mem heap v [] false;
+      let empty = Hashtbl.create 100 in
+      LLDBOCamlValue.print_value target mem heap v [] empty false;
     ) map
   with Not_found ->
     Printf.printf "Error: could not find locations for module %S\n%!" modname
@@ -109,7 +110,8 @@ let print_module_global target mem heap modname ident =
     Printf.printf "  %s.%s -> %d\n%!" modname ident i;
     let addr = Int64.add modaddr (Int64.of_int (i*8)) in
     let v = LLDBUtils.getMem64 process addr in
-    LLDBOCamlValue.print_value target mem heap v [] false;
+    let empty = Hashtbl.create 100 in
+    LLDBOCamlValue.print_value target mem heap v [] empty false;
     with Not_found ->
       Printf.printf "Error: could not find ident %s in module %S\n%!" ident modname
 
