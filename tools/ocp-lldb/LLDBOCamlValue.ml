@@ -143,18 +143,19 @@ type value_type =
   | Array of Env.t * type_expr
   | Option of Env.t * type_expr
   | Ref of Env.t * type_expr
+  | Record of Env.t * type_expr * type_expr list * Path.t * type_declaration * label_declaration list
   | FLOAT | INT32 | INT64 | CHAR | BOOL | STR | INT | NINT | UNIT | Nope
 
 let find_decl_value ty env path ty_list =
  match Env.find_type path env with
- | exception exn -> Nope
+ | exception exn -> Printf.printf "type decl not found\n"; Nope
  | decl ->
 
    match decl.type_kind with
-   | Type_record _
+   | Type_record(lbl_list, record_repr) -> Record(env, ty, ty_list, path, decl, lbl_list)
    | Type_variant _
    | Type_open
-   | Type_abstract -> Nope
+   | Type_abstract -> Printf.printf "unsupported type decl\n";Nope
 
 let find_type (env, ty) =
   let ty = Ctype.expand_head env ty in
@@ -185,6 +186,7 @@ let find_type (env, ty) =
       if Path.name path = "Pervasives.ref" then begin
           Ref (env, ty_arg)
       end else begin
+          Printf.printf "poly unk path: %s\n" (Path.name path);
           find_decl_value ty env path [ty_arg]
       end
 
@@ -215,10 +217,13 @@ let find_type (env, ty) =
       end else
       if Path.same path Predef.path_unit then begin
           UNIT
-      end else
-          Nope
+      end else begin
+          Printf.printf "unk path: %s\n" (Path.name path);
+          find_decl_value ty env path []
+      end
 
     | Tconstr(path, ty_list, _) ->
+      Printf.printf "unk path: %s\n" (Path.name path);
       find_decl_value ty env path ty_list
 
 let get_header_of_block c v =
@@ -408,7 +413,7 @@ and print_decl_value c indent h addr types ty env path ty_list =
 #if OCAML_VERSION >= "4.03"
       match constr_args with
       | Cstr_record lbl_list ->
-        print_record c indent  h addr env ty decl path ty_list lbl_list
+        print_record c indent addr env ty decl path ty_list lbl_list
       | Cstr_tuple constr_args ->
 #endif
        match
@@ -438,7 +443,7 @@ and print_decl_value c indent h addr types ty env path ty_list =
 
 
    | Type_record(lbl_list, rep) ->
-     print_record c indent  h addr env ty decl path ty_list lbl_list
+     print_record c indent addr env ty decl path ty_list lbl_list
 
 #if OCAML_VERSION < "4.02"
 #else
@@ -489,7 +494,9 @@ and print_typed_valueh c indent v (env,ty) =
       let nv = LLDBUtils.getMem64 c.process v in
       (indent, "<ref>", "") ::
       print_typed_valueh c (indent+2) nv (env,ty)
-    | _ -> [indent, "typed value unhandled", ""]
+    | Record(env, ty, ty_list, path, decl, lbl_list) ->
+        print_record c indent v env ty decl path ty_list lbl_list
+    | Nope -> [indent, "typed value unhandled", ""]
 
 and print_float indent n =
   [ indent, Printf.sprintf "%f" (Int64.float_of_bits n), ""]
@@ -671,7 +678,7 @@ and print_boxed_value c indent n tr =
          in
          s @ print_array (env, ty_arg) c indent addr (i+1) len
 
-and print_record c indent  h addr env ty decl path ty_list lbl_list =
+and print_record c indent addr env ty decl path ty_list lbl_list =
 
      let fields = List.mapi (fun pos lbl ->
        let (lbl_name, lbl_arg) = label_name_arg lbl
