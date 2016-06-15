@@ -140,6 +140,7 @@ type context = {
 
 type value_type =
     List of Env.t * type_expr
+  | Tuple of type_expr list
   | Array of Env.t * type_expr
   | Option of Env.t * type_expr
   | Ref of Env.t * type_expr
@@ -184,7 +185,6 @@ let find_type (env, ty) =
     | Tlink _ -> assert false
     | Tvar _
     | Tarrow (_, _, _, _)
-    | Ttuple _
     | Tobject (_, _)
     | Tfield (_, _, _, _)
     | Tnil
@@ -194,6 +194,7 @@ let find_type (env, ty) =
     | Tpoly (_, _)
     | Tpackage (_, _, _) -> Nope
 
+    | Ttuple ty_args -> Tuple ty_args
     | Tconstr (path, [ty_arg], _) ->
       if Path.same path Predef.path_list then begin
           List (env, ty_arg)
@@ -502,6 +503,19 @@ and print_typed_valueh c indent v (env,ty) =
     | List (env,tys) ->
       (indent, "<list>", "") ::
         print_list_value c indent env tys v 0
+    | Tuple ty_args ->
+      let h = get_header_of_block c v in
+      let ty_args = Array.of_list ty_args in
+      let len = Array.length ty_args in
+      if len <> h.wosize then
+        debug_path
+          ([indent, Printf.sprintf "0x%Lx" v, ""])
+          (Printf.sprintf
+             "WARNING(tuple size %d <> block size %d)"
+             len h.wosize)
+      else
+      (indent, "<tuple>", string_of_type_expr env ty) ::
+           (print_tuple "tuple" env ty_args c indent v 0 h.wosize)
     | Array (envv,tty) ->
       let h = get_header_of_block c v in
       if h.tag = 254 then print_raw_value c indent h v else
