@@ -144,18 +144,39 @@ type value_type =
   | Option of Env.t * type_expr
   | Ref of Env.t * type_expr
   | Record of Env.t * type_expr * type_expr list * Path.t * type_declaration * label_declaration list
+  | Variant of Env.t * type_expr * type_expr list * Path.t * type_declaration * constructor_declaration list
   | FLOAT | INT32 | INT64 | CHAR | BOOL | STR | INT | NINT | UNIT | Nope
 
-let find_decl_value ty env path ty_list =
- match Env.find_type path env with
- | exception exn -> Printf.printf "type decl not found\n"; Nope
- | decl ->
+let extract_constant_ctors ~cases =
+  let constant_ctors, _ =
+    List.fold_left
+    (fun (constant_ctors, next_ctor_number) ctor_decl ->
+      let ident = ctor_decl.cd_id in
+      match ctor_decl.cd_args with
+        | [] ->
+            (next_ctor_number, ident)::constant_ctors, next_ctor_number + 1
+        | _ -> constant_ctors, next_ctor_number)
+    ([], 0) cases
+  in constant_ctors
 
-   match decl.type_kind with
-   | Type_record(lbl_list, record_repr) -> Record(env, ty, ty_list, path, decl, lbl_list)
-   | Type_variant _
-   | Type_open
-   | Type_abstract -> Printf.printf "unsupported type decl\n";Nope
+let find_decl_value ty env path ty_list =
+  let handle_decl decl =
+    match decl.type_kind with
+      | Type_record (lbl_list, record_repr) -> Record(env, ty, ty_list, path, decl, lbl_list)
+      | Type_variant constr_list -> Variant (env, ty, ty_list, path, decl, constr_list)
+      | Type_open
+      | Type_abstract -> Printf.printf "unsupported type decl\n";Nope
+  in
+
+ match Env.find_type path env with
+   | exception exn -> begin
+     let tds = Symtbl.tydecl_tbl in
+     try
+       let td = Hashtbl.find !tds (Path.name path) in handle_decl td
+     with _ -> Printf.printf "type decl not found\n"; Nope
+   end
+
+   | decl -> handle_decl decl
 
 let find_type (env, ty) =
   let ty = Ctype.expand_head env ty in
@@ -218,12 +239,12 @@ let find_type (env, ty) =
       if Path.same path Predef.path_unit then begin
           UNIT
       end else begin
-          Printf.printf "unk path: %s\n" (Path.name path);
+          Printf.printf "single unk path: %s\n" (Path.name path);
           find_decl_value ty env path []
       end
 
     | Tconstr(path, ty_list, _) ->
-      Printf.printf "unk path: %s\n" (Path.name path);
+      Printf.printf "mult unk path: %s\n" (Path.name path);
       find_decl_value ty env path ty_list
 
 let get_header_of_block c v =
@@ -496,6 +517,12 @@ and print_typed_valueh c indent v (env,ty) =
       print_typed_valueh c (indent+2) nv (env,ty)
     | Record(env, ty, ty_list, path, decl, lbl_list) ->
         print_record c indent v env ty decl path ty_list lbl_list
+    | Variant(env, ty, ty_list, path, decl, constr_list) ->
+      if Int64.logand v 1L = 0L then
+        let h = get_header_of_block c v in
+        print_block_variant c indent h v env path decl ty ty_list constr_list
+      else
+        print_const_variant indent ocaml_value constr_list
     | Nope -> [indent, "typed value unhandled", ""]
 
 and print_float indent n =
@@ -718,6 +745,65 @@ and print_record c indent addr env ty decl path ty_list lbl_list =
              fields)) @
        [ indent, "}", "" ]
 
+and print_const_variant indent ocaml_value constr_list =
+  let const_ctors = extract_constant_ctors constr_list in
+  if ocaml_value >= 0 && ocaml_value < List.length const_ctors
+  then
+    let ident =
+      try Some (List.assoc ocaml_value const_ctors)
+      with Not_found -> None in
+    begin match ident with
+      | Some ident -> [indent, Printf.sprintf "%s" (Ident.name ident), ""]
+      | None -> [indent, "unhandled const variant", ""]
+    end
+  else
+    [indent, "unhandled const variant", ""]
+
+and print_block_variant c indent h addr env path decl ty ty_list constr_list =
+  let tag =
+    Cstr_block h.tag
+  in
+  let (constr_name, constr_args,ret_type) =
+    constructor_info
+      (Datarepr.find_constr_by_tag tag constr_list) in
+  let constr_name = Ident.name constr_name in
+  let type_params =
+    match ret_type with
+      Some t ->
+        begin match (Ctype.repr t).desc with
+          Tconstr (_,params,_) ->
+            params
+        | _ -> assert false end
+    | None -> decl.type_params
+  in
+  let printed_args =
+#if OCAML_VERSION >= "4.03"
+    match constr_args with
+    | Cstr_record lbl_list ->
+      print_record c indent addr env ty decl path ty_list lbl_list
+    | Cstr_tuple constr_args ->
+#endif
+    match
+      try `Value (List.map
+                    (function ty ->
+                      Ctype.apply env type_params ty ty_list )
+                    constr_args)
+      with  Ctype.Cannot_apply as exn -> `Exception exn
+    with
+    | `Exception exn ->
+      [indent, (Printf.sprintf "%s (Ctype.Cannot_apply)" constr_name), ""]
+    | `Value ty_args ->
+      let ty_args = Array.of_list ty_args in
+      let len = Array.length ty_args in
+      if len <> h.wosize then
+        [indent,
+        (Printf.sprintf
+           "WARNING(%s size %d <> block size %d)" constr_name
+           len h.wosize),
+         ""]
+      else
+        (print_tuple constr_name env ty_args c indent addr 0 h.wosize)
+  in (indent, Printf.sprintf "<%s>" constr_name, string_of_type_expr env ty) :: printed_args
 
 
 let print_value target mem heap initial_addr types verbose =

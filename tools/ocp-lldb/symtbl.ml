@@ -15,12 +15,15 @@ let id_to_string s =
 
 let vb_tbl = ref @@ Hashtbl.create 100
 let typ_tbl = ref @@ Hashtbl.create 100
+let tydecl_tbl = ref @@ Hashtbl.create 100
 let sc = ref []
 
 let while_cnt = ref 0
 let mk_while_id x =
     while_cnt := !while_cnt + 1;
     Printf.sprintf "while_%d_from_%s" !while_cnt x
+
+let strip s = List.hd @@ Str.split (Str.regexp "/") s
 
 module IterArg = struct
   include TypedtreeIter.DefaultIteratorArgument
@@ -100,8 +103,6 @@ module IterArg = struct
 
     let gen_type = print_type bind.vb_expr.exp_env bind.vb_expr.exp_type in
     Hashtbl.add !vb_tbl ident (bind.vb_expr.exp_loc, gen_type, final_scope);
-
-    let strip s = List.hd @@ Str.split (Str.regexp "/") s in
     Hashtbl.add !typ_tbl (strip ident) (bind.vb_expr.exp_env, bind.vb_expr.exp_type);
 
     Printf.printf "processed %s : [%s]\n" ident (print_stack !sc);
@@ -147,6 +148,8 @@ module IterArg = struct
     | _ -> ()
 
   let leave_type_declaration td =
+    let ident = id_to_string td.typ_id in
+    Hashtbl.add !tydecl_tbl (strip ident) td.typ_type;
     Printtyp.type_declaration td.typ_id Format.str_formatter td.typ_type;
     let s = Format.flush_str_formatter () in Printf.printf "type def %s\n" s
 
@@ -159,4 +162,5 @@ let vb structure =
   Printf.printf "got %d vbs\n" (Hashtbl.length !vb_tbl);
   Hashtbl.iter (fun k (tl,ty,scope) ->  Printf.printf "%s : %s with scope inside %s\n" k ty scope) !vb_tbl;
   Printf.printf "got %d ids and typ\n" (Hashtbl.length !typ_tbl)
+  (*;let res = (!typ_tbl, !tydecl_tbl) in Hashtbl.clear !typ_tbl; Hashtbl.clear !tydecl_tbl; res*)
 
