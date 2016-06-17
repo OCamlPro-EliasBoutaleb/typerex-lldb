@@ -22,7 +22,8 @@ let get_symbol target sym_name =
   | 0 ->
     Printf.kprintf failwith "no symbol %s\n%!" sym_name;
   | n ->
-    Printf.printf "got %d symbol for %s\n%!" n sym_name;
+    if !LLDBGlobals.verbose then
+      Printf.printf "got %d symbol for %s\n%!" n sym_name;
     let sctx = SBSymbolContextList.getContextAtIndex symcontextlist 0 in
     let sym = SBSymbolContext.getSymbol sctx in
     sym
@@ -36,7 +37,9 @@ let get_ttree_from_symbol sym len =
 
   let buffer = Bytes.create len in
   let bytes_read = SBData.readRawData sect_data sbError (Int64.to_int ofs) buffer len in
-  Printf.printf "ofs 0x%Lx of section %s ; read %d out of %d bytes\n" ofs sect_name bytes_read len;
+
+  if !LLDBGlobals.verbose then
+    Printf.printf "ofs 0x%Lx of section %s ; read %d out of %d bytes\n" ofs sect_name bytes_read len;
 
   let (ttree : Typedtree.structure) = Marshal.from_bytes buffer 0 in ttree
 
@@ -48,7 +51,9 @@ let get_size_from_symbol target sym =
   let sect_name = SBSection.getName section in
   let sect_data = SBSection.getSectionData section in
   let size = SBData.getUnsignedInt64 sect_data sbError (Int64.to_int ofs) in
-  Printf.printf "%s at ofs 0x%Lx of section %s\n%!" sym_name ofs sect_name; size
+  if !LLDBGlobals.verbose then
+    Printf.printf "%s at ofs 0x%Lx of section %s\n%!" sym_name ofs sect_name;
+  size
 
 let load_tt target modname =
   let res = try
@@ -60,10 +65,11 @@ let load_tt target modname =
   in
   match res with
   | Some (a, b) ->
-      Printf.eprintf "Loading typedtree information...\n%!";
       let ttree_size = get_size_from_symbol target b in
       let t = get_ttree_from_symbol a (Int64.to_int ttree_size) in
-      Printf.printf "ttree_size = 0x%Lx\n%!" ttree_size;
+      if !LLDBGlobals.verbose then
+        Printf.printf "ttree_size = 0x%Lx\n%!" ttree_size;
+
       Some (Symtbl.vb t)
   | None -> None
 

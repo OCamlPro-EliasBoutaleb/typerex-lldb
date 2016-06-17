@@ -40,7 +40,7 @@ open GcprofTypes
 
 let max_indent = ref 10
 
-(*verbose flag*)
+(*full verbose variable printing flag*)
 let vf = ref false
 
 let tydecl_tbl = ref @@ Hashtbl.create 100
@@ -210,7 +210,6 @@ let find_type (env, ty) =
       if Path.name path = "Pervasives.ref" then begin
           Ref (env, ty_arg)
       end else begin
-          Printf.printf "poly unk path: %s\n" (Path.name path);
           find_decl_value ty env path [ty_arg]
       end
 
@@ -242,12 +241,10 @@ let find_type (env, ty) =
       if Path.same path Predef.path_unit then begin
           UNIT
       end else begin
-          Printf.printf "single unk path: %s\n" (Path.name path);
           find_decl_value ty env path []
       end
 
     | Tconstr(path, ty_list, _) ->
-      Printf.printf "mult unk path: %s\n" (Path.name path);
       find_decl_value ty env path ty_list
 
 let get_header_of_block c v =
@@ -381,12 +378,10 @@ and print_typed_valueh c indent v (env,ty) =
        Printf.sprintf "<array[%d]>" h.wosize,
        string_of_type_expr env ty) ::
            (print_array (envv,tty) c indent v 0 h.wosize)
-    | Option (env, ty) ->
-      print_option c indent env ty v
+    | Option (env, ty) -> print_option c indent env ty v
     | Ref (env, ty) ->
       let nv = LLDBUtils.getMem64 c.process v in
-      (indent, "<ref>", "") ::
-      print_typed_valueh c (indent+2) nv (env,ty)
+      (indent, "<ref>", "") :: print_typed_valueh c (indent+2) nv (env,ty)
     | Record(env, ty, ty_list, path, decl, lbl_list) ->
         print_record c indent v env ty decl path ty_list lbl_list
     | Variant(env, ty, ty_list, path, decl, constr_list) ->

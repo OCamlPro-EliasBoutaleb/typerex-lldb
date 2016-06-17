@@ -246,42 +246,74 @@ let ocaml_paths debugger =
 
 let strip s = List.hd @@ Str.split (Str.regexp "/") s
 
+let print_var target value name et tds vf =
+  let heap = LLDBOCamlHeap.get_heap_info target in
+  let mem = LLDBOCamlHeap.get_memory_info target in
+
+  match et with
+  | [e,t] ->
+    begin
+      let typ = Symtbl.print_type e t in
+      if SBValue.isInScope value
+      then begin
+        let final = SBValue.getValueAsUnsigned1 value (-42L) in
+        if final <> (-42L)
+        then LLDBOCamlValue.print_value target mem heap final [(e, t)] tds vf
+        else Printf.printf "%s : %s = not available\n" name typ
+      end
+      else Printf.printf "%s : %s = not in scope\n" name typ
+    end
+  | _ ->
+    begin
+      Printf.printf "%s : <type unavailable>" name;
+      let final = SBValue.getValueAsUnsigned1 value (-42L) in
+      if final <> (-42L) then begin
+        Printf.printf " = ";
+        LLDBOCamlValue.print_value target mem heap final et tds vf;
+      end;
+      print_endline ""
+    end
+
 let ocaml_print_locals debugger var vf =
   let target = SBDebugger.getSelectedTarget debugger in
   let process = SBTarget.getProcess target in
   let thread = SBProcess.getSelectedThread process in
   let frame = SBThread.getSelectedFrame thread in
 
-  let heap = LLDBOCamlHeap.get_heap_info target in
-  let mem = LLDBOCamlHeap.get_memory_info target in
-
   let (inited, globals_map) = LLDBOCamlGlobals.load_globals_map target in
   let (curr_modname, _, _, _) = globals_map.(inited) in
-  match LLDBOCamlTypes.load_tt target curr_modname with
-  | Some (et, tds, _) -> begin
 
-    if var = ""
-    then begin
+  let get_type_and_env tbl var =
+    try
+      [Hashtbl.find tbl (strip var)]
+    with _ -> begin try [Hashtbl.find tbl var] with _ -> [] end in
+
+  match LLDBOCamlTypes.load_tt target curr_modname with
+  | Some (et, tds, _) ->
+  begin
+
+    if var = "" then
+    begin
+
+      (* Among all variables captured in the symbol table, process all variables
+       * whose identifier is present in the DWARF.
+       *
+       * If an exception is raised when getting name of the variable, then it was not found
+       * and is ignored.
+       * *)
 
       let processed = ref [] in
 
-      let printt value name (e, t) =
-        let typ = Symtbl.print_type e t in
-        if SBValue.isInScope value then begin
-            let final = SBValue.getValueAsUnsigned1 value (-42L) in
-            if final <> (-42L) then
-                LLDBOCamlValue.print_value target mem heap final [(e, t)] tds vf
-            else Printf.printf "%s : %s = not available\n" name typ
-        end
-        else Printf.printf "%s : %s = not in scope\n" name typ in
       Hashtbl.iter (fun var (e,t) ->
         let cvalue = SBFrame.findVariable frame var in
-        try
-          let n = SBValue.getName cvalue in printt cvalue n (e,t); processed := n :: !processed
-        with _ ->
-          let nv = SBFrame.findVariable frame (strip var) in
-          try let n = SBValue.getName nv in printt nv n (e,t); processed := n :: !processed with _ -> ()
+          try
+            let n = SBValue.getName cvalue in
+            print_var target cvalue n [(e, t)] tds vf; processed := n :: !processed
+          with _ -> ()
       ) et;
+
+      (* Variables introduced further down in the backend such as `bound` and `i_$stamp` in a for loop
+         might appear in the DWARF. Those variables are then processed.*)
 
       let values = SBFrame.getVariables frame true true false true in
       let size = SBValueList.getSize values in
@@ -289,44 +321,17 @@ let ocaml_print_locals debugger var vf =
 
         let value = SBValueList.getValueAtIndex values i in
         let name = SBValue.getName value in
-        if List.mem name !processed = false then begin
-          let re =
-              try
-                  [Hashtbl.find et (strip name)]
-              with _ -> begin try [Hashtbl.find et name] with _ -> [] end in
-          let typ =
-              match re with
-              | [] -> Printf.printf "var %s %s\n" name (strip name); "type not available"
-              | hd :: _ -> Symtbl.print_type (fst hd) (snd hd) in
-
-          if SBValue.isInScope value then begin
-            let final = SBValue.getValueAsUnsigned1 value (-42L) in
-            if final <> (-42L) then
-                let vs =
-                    if Int64.logand final Int64.one = Int64.zero
-                    then "ptr"
-                    else "val" in
-                Printf.printf "%s : %s (%s) = " name typ vs;
-                LLDBOCamlValue.print_value target mem heap final re tds vf;
-            else Printf.printf "%s : %s = not available\n" name typ
-          end
-          else Printf.printf "%s : %s = not in scope\n" name typ
+        if not (List.mem name !processed) then
+        begin
+          let re = get_type_and_env et var in
+          print_var target value name re tds vf
         end
       done
-
     end
-    else begin
 
-        (*TODO : lexical scope issue reappearing here*)
-
-      let value = SBFrame.findVariable frame var in
-
-      if SBValue.isInScope value then begin
-          let final = SBValue.getValueAsUnsigned1 value (-42L) in
-          if final <> (-42L) then Printf.printf "%Ld\n" final else Printf.printf "gdi\n"
-      end
-      else Printf.printf "not in scope\n"
-    end
+    else
+      let re = get_type_and_env et var in
+      print_var target (SBFrame.findVariable frame var) var re tds vf
   end
   | None -> Printf.printf "ttree not found\n"
 
@@ -455,6 +460,9 @@ let ocaml_command debugger args =
     Printf.printf "  'ocaml reg RAX' : print register as an OCaml value\n";
     Printf.printf "  'ocaml globals MODULE' : print all globals of MODULE\n";
     Printf.printf "  'ocaml global MODULE.VALUE' : print fully-qualified global\n";
+    Printf.printf "  'ocaml print(v) locals' : list all available OCaml variables\n%!";
+    Printf.printf "  'ocaml print(v) var VARIABLE' : print information on OCaml variable\n%!";
+    Printf.printf "  'ocaml typeof VARIABLE' : print type information of an OCaml variable\n%!";
 
     Printf.printf "  'ocaml target Module' : print target info on Module\n%!";
 
