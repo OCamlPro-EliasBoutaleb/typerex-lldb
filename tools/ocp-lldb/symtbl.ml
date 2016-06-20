@@ -23,7 +23,44 @@ let mk_while_id x =
     while_cnt := !while_cnt + 1;
     Printf.sprintf "while_%d_from_%s" !while_cnt x
 
-let strip s = List.hd @@ Str.split (Str.regexp "/") s
+let strip s = if s = "" then s else List.hd @@ Str.split (Str.regexp "/") s
+
+let capture_func_args e =
+
+  let ident patt =
+    match patt.pat_desc with
+      | Tpat_var (s,_) -> id_to_string s
+      | _ -> ""
+  in
+
+  let rec h expr =
+  match expr.exp_desc with
+  | Texp_function (_, l, _partial) ->
+
+    assert (List.length l > 0);
+    let fn_scope = try List.hd !sc with _ -> failwith "not in a function" in
+    if List.length l > 1 then Printf.printf "function keyword/partial application detected for %s\n" fn_scope else
+    begin
+      let case = List.hd l in
+
+      let id = ident case.c_lhs in
+
+      let patt = case.c_lhs in
+
+      let param_loc, param_env, param_type =
+          (patt.pat_loc, patt.pat_env, patt.pat_type) in
+
+      let gen_type = print_type param_env param_type in
+
+      if id <> "" then
+        Hashtbl.add !vb_tbl id (param_loc, gen_type, fn_scope);
+        Hashtbl.add !typ_tbl id (param_env, param_type);
+
+    h case.c_rhs
+    end
+  | _ -> () in
+
+  h e
 
 module IterArg = struct
   include TypedtreeIter.DefaultIteratorArgument
@@ -103,7 +140,8 @@ module IterArg = struct
           let ns = id_to_string s in
           match bind.vb_expr.exp_desc with
           | Texp_function _ ->
-                if ns <> final_scope then sc := ns :: !sc
+              if ns <> final_scope then sc := ns :: !sc;
+              capture_func_args (bind.vb_expr)
           | Texp_let (rf, (lvb::_), e) ->
               begin
                 if ns = !saved_let then sc := ns :: !sc;

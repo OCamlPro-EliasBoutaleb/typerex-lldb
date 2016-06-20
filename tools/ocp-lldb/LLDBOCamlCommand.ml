@@ -244,7 +244,7 @@ let ocaml_paths debugger =
   Printf.printf "You can use 'settings set target.source-map PATH1 PATH2'\n";
   Printf.printf "to translate these paths to yours.\n%!"
 
-let strip s = List.hd @@ Str.split (Str.regexp "/") s
+let strip s = if s = "" then s else List.hd @@ Str.split (Str.regexp "/") s
 
 let print_var target value name et tds vf =
   let heap = LLDBOCamlHeap.get_heap_info target in
