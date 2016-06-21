@@ -251,6 +251,18 @@ let get_header_of_block c v =
   let header = LLDBUtils.getMem64 c.process (Int64.sub v 8L) in
   LLDBOCamlDatarepr.parse_header c.mem header
 
+let is_addr_on_stack c ofs =
+  let process = c.process in
+  let pid = SBProcess.getProcessID process in
+  let s,h = LLDBUtils.get_stack_and_heap_ranges pid in
+  LLDBUtils.test_offset s ofs
+
+let is_addr_on_heap c ofs =
+  let process = c.process in
+  let pid = SBProcess.getProcessID process in
+  let s,h = LLDBUtils.get_stack_and_heap_ranges pid in
+  LLDBUtils.test_offset h ofs
+
 #ifdef OCAML_NON_OCP
 let string_of_type_expr env ty = Symtbl.print_type env ty
 #else
@@ -329,6 +341,15 @@ let rec print_gen_value c indent addr types =
   | Pointer -> let nv = LLDBUtils.getMem64 c.process addr in print_value c indent nv types
 
 and print_value c indent addr types =
+
+  (*if (is_addr_on_stack c addr)*)
+  (*then Printf.printf "%Lx on stack\n" addr*)
+  (*else if is_addr_on_heap c addr then *)
+         (*Printf.printf "%Lx on heap\n" addr*)
+       (*else*)
+           (*Printf.printf "%Lx most probably from static data\n" addr;*)
+           (*let tgt = SBProcess.getTarget c.process in*)
+           (*LLDBUtils.addr2section_lookup tgt addr;*)
   match types with
     | [] -> [indent, Printf.sprintf "Val %Ld - %Ld" addr (Int64.shift_right addr 1), ""]
     | (env, ty) :: types ->

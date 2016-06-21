@@ -164,3 +164,38 @@ let get_cached_with_symbol_check f symbol =
       modules
   in
   get_modules
+
+let get_stack_and_heap_ranges pid =
+  let open Str in
+  let in_channel = open_in (Printf.sprintf "/proc/%Ld/maps" pid) in
+  let res = ref ("","") in
+  begin
+  try
+    while true do
+      let line = input_line in_channel in
+      try
+        ignore (search_forward (regexp_string "[stack]") line 0);
+        res := (List.hd @@ split_delim (regexp " ") line), snd !res
+      with Not_found ->
+        try
+          ignore (Str.search_forward (regexp_string "[heap]") line 0);
+          res := fst !res, (List.hd @@ split_delim (regexp " ") line)
+        with Not_found -> ();
+    done
+  with End_of_file -> close_in in_channel
+  end;
+  !res
+
+let test_offset s ofs =
+  let parse ic =
+    let f x y = x,y in
+    Scanf.sscanf ic "%Lx-%Lx" f in
+  let x, y = parse s in
+  ofs >= x && ofs <= y
+
+let addr2section_lookup target addr =
+  let a = SBTarget.resolveLoadAddress target addr in
+  if SBAddress.isValid a then
+    let section = SBAddress.getSection a in
+    if SBSection.isValid section then
+      Printf.printf "%Lx is from section %s\n" addr (SBSection.getName section)
