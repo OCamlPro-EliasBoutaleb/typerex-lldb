@@ -28,8 +28,8 @@ external isNull : 'a sb -> bool = "lldb_is_NULL"
 
 module FILE = struct
   external fopen : string -> string -> file = "lldb_fopen_ml"
-  external fopen : file -> unit = "lldb_fclose_ml"
-  external fopen : file -> unit = "lldb_fflush_ml"
+  external fclose : file -> unit = "lldb_fclose_ml"
+  external fflush : file -> unit = "lldb_fflush_ml"
 end
 
 
@@ -136,7 +136,7 @@ end
 module SBCommandInterpreter = struct
   include SBCommandInterpreter
   external addCommand : sbCommandInterpreter -> string ->
-    (string array -> unit) -> string -> unit
+    (string array -> string) -> string -> unit
       = "SBCommandInterpreter_AddCommand_ml"
 end
 

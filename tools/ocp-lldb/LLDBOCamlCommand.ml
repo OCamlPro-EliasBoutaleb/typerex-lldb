@@ -479,9 +479,10 @@ let ocaml_command debugger args =
     Printf.printf "Use 'ocaml help' for help\n%!"
 
 let ocaml_command debugger args =
-  try
+  (try
     ocaml_command debugger args;
     Printf.printf "%!" (* flush output *)
   with e ->
     Printf.printf "ocaml_command: exception %s\n%!"
-      (Printexc.to_string e)
+      (Printexc.to_string e));
+  "erp"

@@ -22,4 +22,4 @@
 val ocaml_command :
   LLDBGenerated.sbDebugger ->
   string array ->
-  unit
+  string

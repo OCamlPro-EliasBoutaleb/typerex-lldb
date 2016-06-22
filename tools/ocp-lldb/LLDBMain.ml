@@ -67,7 +67,10 @@ let arg_attach_name name =
 let args = ref []
 let arg_anon file = args := file :: !args
 let arg_usage = "ocp-lldb [OPTIONS] COMMAND WITH ARGS"
-let arg_batch = ref false
+
+let arg_script_path = ref ""
+let arg_set_batch sn = arg_script_path:= sn
+    (*ref false*)
 let arg_wait_for = ref false
 let arg_editor = ref false
 let arg_no_lldbinit = ref false
@@ -139,7 +142,7 @@ let arg2_list =
     [ "-Q"; "--source-quietly"], Arg.String arg_source_quietly, [
       "LINE Tells the debugger to execute this one-line lldb command before";
       " any file provided on the command line has been loaded." ];
-    [ "-b"; "--batch"], Arg.Set arg_batch, [
+    [ "-b"; "--batch"], Arg.String arg_set_batch, [
       " Tells the debugger to running the commands from -s, -S, -o & -O, and";
       " then quit.  However if any run command stopped due to a signal or";
       " crash, the debugger will return to the interactive prompt at the";
@@ -173,6 +176,12 @@ let _ =
     | [] -> None
     | cmd :: args -> Some (cmd, args)
   in
+
+  if !arg_script_path <> "" then
+    match cmd with
+      | Some(cmd, _) -> LLDBBatch.run_batch cmd !arg_script_path
+      | _ -> ()
+  else
 
   if !server_mode then
     LLDBLooper.main ()

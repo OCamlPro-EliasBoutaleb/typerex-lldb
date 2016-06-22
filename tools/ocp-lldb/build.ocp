@@ -51,6 +51,7 @@ if ocaml_version < "4.02" then {
     "LLDBOCamlStack.ml"
     "LLDBOCamlGlobals.ml"
     "LLDBOCamlCommand.ml"
+    "LLDBBatch.ml"
     "LLDBLooper.ml"
     "LLDBMain.ml" ]
 

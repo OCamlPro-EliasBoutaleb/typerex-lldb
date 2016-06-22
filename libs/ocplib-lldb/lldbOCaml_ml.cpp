@@ -265,6 +265,7 @@ public:
   {
     CAMLparam0();
     CAMLlocal1(args_v);
+    CAMLlocal1(res);
     int nargs = 0;
     int i;
     if( command ){
@@ -276,7 +277,11 @@ public:
     for(i=0; i< nargs; i++){
       caml_modify(& Field(args_v,i), caml_copy_string(command[i]));
     }
-    caml_callback(command_v, args_v);
+    res = caml_callback(command_v, args_v);
+
+    char* s = (char*)String_val(res);
+    result.AppendMessage(s);
+
     CAMLreturn(false);
   }
   OCamlCommand(value callback_v){
