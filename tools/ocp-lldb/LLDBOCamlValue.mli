@@ -29,4 +29,4 @@ val print_value :
   (Env.t * Types.type_expr) list ->
   (string, Types.type_declaration) Hashtbl.t ->
   bool ->
-  unit
+  string

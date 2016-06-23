@@ -71,14 +71,17 @@ let map_of_symbols symbols =
   !map
 
 let print_globals target =
+  let b = Buffer.create 1000 in
   let modules = map_of_globals target in
   StringMap.iter (fun name m ->
-    Printf.printf "%s: %s\n" name
+    Printf.bprintf b "%s: %s\n" name
       (String.concat ", " (Array.to_list m.V1.globals));
   ) modules;
-  Printf.printf "%!"
+  Printf.bprintf b "%!";
+  Buffer.contents b
 
 let print_module_globals target mem heap modname =
+  let b = Buffer.create 10000 in
   let process = SBTarget.getProcess target in
   let modules = map_of_globals target in
   try
@@ -92,10 +95,12 @@ let print_module_globals target mem heap modname =
       let addr = Int64.add modaddr (Int64.of_int (i*8)) in
       let v = LLDBUtils.getMem64 process addr in
       let empty = Hashtbl.create 100 in
-      LLDBOCamlValue.print_value target mem heap v [] empty false;
-    ) map
+      let s = LLDBOCamlValue.print_value target mem heap v [] empty false in
+      Printf.bprintf b "%s" s
+    ) map;
+    Buffer.contents b
   with Not_found ->
-    Printf.printf "Error: could not find locations for module %S\n%!" modname
+    Printf.sprintf "Error: could not find locations for module %S\n%!" modname
 
 let print_module_global target mem heap modname ident =
   let process = SBTarget.getProcess target in
@@ -104,19 +109,21 @@ let print_module_global target mem heap modname ident =
     let m = StringMap.find modname modules in
     let map = map_of_symbols m .V1.globals in
     try
-    let i = StringMap.find ident map in
-    (* TODO: fix mangling for module names *)
-    let modaddr = LLDBUtils.symbol_address target ("caml"^modname) in
-    Printf.printf "  %s.%s -> %d\n%!" modname ident i;
-    let addr = Int64.add modaddr (Int64.of_int (i*8)) in
-    let v = LLDBUtils.getMem64 process addr in
-    let empty = Hashtbl.create 100 in
-    LLDBOCamlValue.print_value target mem heap v [] empty false;
+      let i = StringMap.find ident map in
+      (* TODO: fix mangling for module names *)
+      let b = Buffer.create 1000 in
+      let modaddr = LLDBUtils.symbol_address target ("caml"^modname) in
+      Printf.bprintf b "  %s.%s -> %d\n%!" modname ident i;
+      let addr = Int64.add modaddr (Int64.of_int (i*8)) in
+      let v = LLDBUtils.getMem64 process addr in
+      let empty = Hashtbl.create 100 in
+      Printf.bprintf b "%s" (LLDBOCamlValue.print_value target mem heap v [] empty false);
+      Buffer.contents b
     with Not_found ->
-      Printf.printf "Error: could not find ident %s in module %S\n%!" ident modname
+      Printf.sprintf "Error: could not find ident %s in module %S\n%!" ident modname
 
   with Not_found ->
-    Printf.printf "Error: could not find locations for module %S\n%!" modname
+    Printf.sprintf "Error: could not find locations for module %S\n%!" modname
 
 #endif
 

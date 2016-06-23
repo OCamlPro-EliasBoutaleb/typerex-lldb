@@ -22,4 +22,4 @@
 
 val compute_gc_stats : LLDBGenerated.sbTarget -> Gc.stat
 
-val printf : Gc.stat -> unit
+val sprintf : Gc.stat -> string

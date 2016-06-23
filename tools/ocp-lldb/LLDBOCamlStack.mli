@@ -24,11 +24,11 @@ val print_args :
   LLDBTypes.mem_info ->
   LLDBTypes.heap_info ->
   int ->
-  unit
+  string
 
 val print_reg :
   LLDBGenerated.sbTarget ->
   LLDBTypes.mem_info ->
   LLDBTypes.heap_info ->
   string ->
-  unit
+  string

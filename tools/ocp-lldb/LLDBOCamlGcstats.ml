@@ -80,16 +80,18 @@ let compute_gc_stats target =
       stack_size }
   )
 
-let printf s =
+let sprintf s =
+  let b = Buffer.create 1000 in
   Gc.(
-    Printf.printf "minor_words: %.0f\n" s.minor_words;
-    Printf.printf "promoted_words: %.0f\n" s.promoted_words;
-    Printf.printf "major_words: %.0f\n" s.major_words;
-    Printf.printf "minor_collections: %d\n" s.minor_collections;
-    Printf.printf "major_collections: %d\n" s.major_collections;
-    Printf.printf "heap_words: %d\n" s.heap_words;
-    Printf.printf "heap_chunks: %d\n" s.heap_chunks;
-    Printf.printf "top_heap_words: %d\n" s.top_heap_words;
-    Printf.printf "compactions: %d\n" s.compactions;
-    flush stdout
-  )
+    Printf.bprintf b "minor_words: %.0f\n" s.minor_words;
+    Printf.bprintf b "promoted_words: %.0f\n" s.promoted_words;
+    Printf.bprintf b "major_words: %.0f\n" s.major_words;
+    Printf.bprintf b "minor_collections: %d\n" s.minor_collections;
+    Printf.bprintf b "major_collections: %d\n" s.major_collections;
+    Printf.bprintf b "heap_words: %d\n" s.heap_words;
+    Printf.bprintf b "heap_chunks: %d\n" s.heap_chunks;
+    Printf.bprintf b "top_heap_words: %d\n" s.top_heap_words;
+    Printf.bprintf b "compactions: %d\n" s.compactions;
+    Printf.bprintf b "%!"
+  );
+  Buffer.contents b

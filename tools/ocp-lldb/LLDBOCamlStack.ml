@@ -39,6 +39,7 @@ let get_reg64_value regs name =
   SBData.getUnsignedInt64 data LLDBUtils.sbError 0
 
 let print_args target mem heap nargs =
+  let b = Buffer.create 10000 in
   let process = SBTarget.getProcess target in
   let thread = SBProcess.getSelectedThread process in
   let frame = SBThread.getSelectedFrame thread in
@@ -47,35 +48,16 @@ let print_args target mem heap nargs =
 
   let nargs = min (Array.length arg_regs) nargs in
   let empty = Hashtbl.create 100 in
-  Printf.printf "Printing %d arguments:\n" nargs;
+  Printf.bprintf b "Printing %d arguments:\n" nargs;
 
   for i = 0 to nargs - 1 do
-    Printf.printf "arg[%d]=" i;
-    LLDBOCamlValue.print_value target mem heap
-      (get_reg64_value regs arg_regs.(i)) [] empty false;
-    Printf.printf "\n%!";
+    Printf.bprintf b "arg[%d]=" i;
+    let s = LLDBOCamlValue.print_value target mem heap
+      (get_reg64_value regs arg_regs.(i)) [] empty false in
+    Printf.bprintf b "%s" s;
+    Printf.bprintf b "\n%!";
   done;
-  (*
-  Array.iteri (fun i value ->
-    let name = SBValue.getName value in
-    let nchildren = SBValue.getNumChildren value in
-    Printf.printf "reg %d = %S, %d children\n%!" i name nchildren;
-    (*
-reg 0 = "General Purpose Registers"
-reg 1 = "Floating Point Registers"
-reg 2 = "Advanced Vector Extensions"
-    *)
-    let children = Array.init nchildren (fun j ->
-      let child = SBValue.getChildAtIndex value j in
-      let name = SBValue.getName child in
-      Printf.printf "reg %d = %S\n%!" i name;
-      let v = SBValue.getData child in
-      ()
-    ) in
-    ()
-  ) regs;
-  *)
-  ()
+  Buffer.contents b
 
 let print_reg target mem heap reg =
   let process = SBTarget.getProcess target in

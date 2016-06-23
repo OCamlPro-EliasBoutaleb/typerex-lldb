@@ -33,6 +33,7 @@ let get_current_module target =
   curr_modname
 
 let ocaml_break_narg1 debugger funname =
+  let b = Buffer.create 1000 in
   let target = SBDebugger.getSelectedTarget debugger in
   let ima = LLDBOCamlCode.get_compilation_units target in
   let modname, funname =
@@ -46,7 +47,7 @@ let ocaml_break_narg1 debugger funname =
       Printf.kprintf failwith "%S is not a fully-qualified function"
         funname
   in
-  try
+  (try
     let cu = StringMap.find modname ima.ima_cus_by_name in
     let prefix = Printf.sprintf "caml%s__%s_" modname funname in
     let prefixlen = String.length prefix in
@@ -68,7 +69,7 @@ let ocaml_break_narg1 debugger funname =
           cu.cu_basename              line in
         let nlocs = SBBreakpoint.getNumLocations main_bp in
         let id = SBBreakpoint.getID main_bp in
-        Printf.printf "Breakpoint %d set on %d locations\n%!"
+        Printf.bprintf b "Breakpoint %d set on %d locations\n%!"
           id nlocs;
         let _locs =
           Array.init nlocs
@@ -76,22 +77,23 @@ let ocaml_break_narg1 debugger funname =
               let addr = SBBreakpointLocation.getAddress
                 (SBBreakpoint.getLocationAtIndex main_bp i) in
               let sym = SBAddress.getSymbol addr in
-              Printf.printf "    (%d.%d) %s\n%!"
+              Printf.bprintf b "    (%d.%d) %s\n%!"
                 id (1+i) (SBSymbol.getName sym))
         in
         ()
       with Exit -> ()
     ) cu.cu_symbols
   with Not_found ->
-    Printf.eprintf "Error: could not find module %S\n%!" modname
+    Printf.eprintf "Error: could not find module %S\n%!" modname);
+  Buffer.contents b
 
 let ocaml_gcstats debugger =
     let target = SBDebugger.getSelectedTarget debugger in
     let s = LLDBOCamlGcstats.compute_gc_stats target in
-    LLDBOCamlGcstats.printf s
-
+    LLDBOCamlGcstats.sprintf s
 
 let ocaml_modules debugger =
+  let b = Buffer.create 1000 in
   let target = SBDebugger.getSelectedTarget debugger in
   let ima = LLDBOCamlCode.get_compilation_units target in
   let units = ref [] in
@@ -103,59 +105,52 @@ let ocaml_modules debugger =
       units := modname :: !units;
       incr nunits
   ) ima.ima_cus;
-  Printf.printf "Found %d OCaml modules in executable\n" !nunits;
+  Printf.bprintf b "Found %d OCaml modules in executable\n" !nunits;
   List.iteri (fun i modname ->
-    Printf.printf "[%3d] %s\n" i modname
+    Printf.bprintf b "[%3d] %s\n" i modname
   ) !units;
-      (*
-    (* These ones are only statically linked modules *)
-        | [| "modules" |] ->
-        let target = SBDebugger.getSelectedTarget debugger in
-        let modules = LLDBOCamlCode.get_modules target in
-        Printf.printf "%d statically linked modules:\n" (Array.length modules);
-        Array.iteri (fun i { mod_name; mod_addr; mod_symbol } ->
-        Printf.printf "module[%d] %s (addr = 0x%Lx, symbol = %s)\n%!" i
-        mod_name mod_addr mod_symbol;
-        ) modules
-      *)
-  ()
+  Buffer.contents b
 
 let ocaml_globals_map debugger =
+  let b = Buffer.create 1000 in
   let target = SBDebugger.getSelectedTarget debugger in
   let (inited, globals_map) = LLDBOCamlGlobals.load_globals_map target in
   Array.iteri (fun i (modname, crc1, crc2, deps) ->
-    Printf.printf "[%d] %c %-30s %s %s %s\n" i
+    Printf.bprintf b "[%d] %c %-30s %s %s %s\n" i
       (if i = inited then '*' else '.')
       modname (Digest.to_hex crc1) (Digest.to_hex crc2)
       (String.concat "," deps)
   ) globals_map;
-  ()
+  Buffer.contents b
 
 let ocaml_current debugger =
+  let b = Buffer.create 1000 in
   let target = SBDebugger.getSelectedTarget debugger in
   let (inited, globals_map) = LLDBOCamlGlobals.load_globals_map target in
   for i = 0 to inited-1 do
     let (modname, _, _, _) = globals_map.(i) in
-    Printf.printf "%s " modname;
+    Printf.bprintf b "%s " modname;
   done;
   let (modname, _, _, _) = globals_map.(inited) in
-  Printf.printf "[%s]\n" modname;
-  ()
+  Printf.bprintf b "[%s]\n" modname;
+  Buffer.contents b
 
 let ocaml_code debugger =
+  let b = Buffer.create 1000 in
   let target = SBDebugger.getSelectedTarget debugger in
   let code_fragments = LLDBOCamlCode.get_code_info target in
   Array.iteri (fun i { code_start; code_end } ->
-    Printf.printf "%d -> 0x%Lx - 0x%Lx (%Ld bytes)\n"
+    Printf.bprintf b "%d -> 0x%Lx - 0x%Lx (%Ld bytes)\n"
       i code_start code_end (Int64.sub code_end code_start)
   ) code_fragments;
-  Printf.printf "%!";
-  ()
+  Printf.bprintf b "%!";
+  Buffer.contents b
 
 let ocaml_heap debugger =
+  let b = Buffer.create 1000 in
   let target = SBDebugger.getSelectedTarget debugger in
   let heap = LLDBOCamlHeap.get_heap_info target in
-  Printf.printf "minor heap: 0x%Lx - 0x%Lx (size %Ld kB)\n%!"
+  Printf.bprintf b "minor heap: 0x%Lx - 0x%Lx (size %Ld kB)\n%!"
     heap.caml_young_start
     heap.caml_young_end
     (Int64.div (Int64.sub heap.caml_young_end heap.caml_young_start) 1024L);
@@ -163,70 +158,78 @@ let ocaml_heap debugger =
   List.iter (fun (chunk_begin, chunk_end) ->
     sizeL := Int64.add !sizeL (Int64.sub chunk_end chunk_begin)
   ) heap.caml_chunks;
-  Printf.printf "major heap: size %Ld kB\n" (Int64.div !sizeL 1024L);
+  Printf.bprintf b "major heap: size %Ld kB\n" (Int64.div !sizeL 1024L);
   List.iter (fun (chunk_begin, chunk_end) ->
-    Printf.printf "   0x%Lx - 0x%Lx (size %Ld kB)\n%!"
+    Printf.bprintf b "   0x%Lx - 0x%Lx (size %Ld kB)\n%!"
       chunk_begin chunk_end
       (Int64.div (Int64.sub chunk_end chunk_begin) 1024L)
-  ) heap.caml_chunks
+  ) heap.caml_chunks;
+  Buffer.contents b
 
 let ocaml_targets debugger =
-    let target = SBDebugger.getSelectedTarget debugger in
-    let nm = SBTarget.getNumModules target in
-    Printf.printf "%d components in executable\n%!" nm;
-    let _modules = Array.init nm (fun i ->
-      let m = SBTarget.getModuleAtIndex target i in
-      Printf.printf "component %S\n" (SBModule.to_string m);
-      let n = SBModule.getNumCompileUnits m in
-      let _cus = Array.init n (fun i ->
-        SBModule.getCompileUnitAtIndex m i
-      ) in
-      Printf.printf "%d compilation units in this component\n%!" n
+  let b = Buffer.create 1000 in
+  let target = SBDebugger.getSelectedTarget debugger in
+  let nm = SBTarget.getNumModules target in
+  Printf.bprintf b "%d components in executable\n%!" nm;
+
+  let _modules = Array.init nm (fun i ->
+    let m = SBTarget.getModuleAtIndex target i in
+    Printf.bprintf b "component %S\n" (SBModule.to_string m);
+    let n = SBModule.getNumCompileUnits m in
+    let _cus = Array.init n (fun i ->
+      SBModule.getCompileUnitAtIndex m i
     ) in
-    ()
+    Printf.bprintf b "%d compilation units in this component\n%!" n
+  ) in
+  Buffer.contents b
 
 let ocaml_target debugger =
+  let b = Buffer.create 1000 in
   let target = SBDebugger.getSelectedTarget debugger in
   let ima = LLDBOCamlCode.get_compilation_units target in
-  Printf.printf "%d compilation units in this component\n%!"
+  Printf.bprintf b "%d compilation units in this component\n%!"
     (Array.length ima.ima_cus);
   Array.iteri (fun i cu ->
     match cu.cu_modname with
     | None ->
-      Printf.printf "{\n";
-      Printf.printf "  cu_descr = %S\n" cu.cu_descr;
-      Printf.printf "  cu_basename = %S\n" cu.cu_basename;
-      Printf.printf "  cu_dirname = %S\n" cu.cu_dirname;
-      Printf.printf "  cu_symbols = { %d symbols }\n"
+      Printf.bprintf b "{\n";
+      Printf.bprintf b "  cu_descr = %S\n" cu.cu_descr;
+      Printf.bprintf b "  cu_basename = %S\n" cu.cu_basename;
+      Printf.bprintf b "  cu_dirname = %S\n" cu.cu_dirname;
+      Printf.bprintf b "  cu_symbols = { %d symbols }\n"
         (StringMap.cardinal cu.cu_symbols);
-      Printf.printf "}\n";
+      Printf.bprintf b "}\n";
     | Some modname ->
-      Printf.printf "%3d -> %s\n%!" i modname;
-      Printf.printf "  %s ... %s\n" cu.cu_dirname cu.cu_basename;
+      Printf.bprintf b "%3d -> %s\n%!" i modname;
+      Printf.bprintf b "  %s ... %s\n" cu.cu_dirname cu.cu_basename;
       StringMap.iter (fun name line ->
-        Printf.printf "  %s -> %s:%d\n"
+        Printf.bprintf b "  %s -> %s:%d\n"
           name cu.cu_basename line
       ) cu.cu_symbols;
   ) ima.ima_cus;
-  Printf.printf "%!"
+  Printf.bprintf b "%!";
+  Buffer.contents b
 
 let ocaml_target_narg1 debugger modname =
+  let b = Buffer.create 1000 in
   let target = SBDebugger.getSelectedTarget debugger in
   let ima = LLDBOCamlCode.get_compilation_units target in
   begin
     try
       let cu = StringMap.find modname ima.ima_cus_by_name in
-      Printf.printf "  %s ... %s\n" cu.cu_dirname cu.cu_basename;
+      Printf.bprintf b "  %s ... %s\n" cu.cu_dirname cu.cu_basename;
       StringMap.iter (fun name line ->
-        Printf.printf "  %s -> %s:%d\n"
+        Printf.bprintf b "  %s -> %s:%d\n"
           name cu.cu_basename line
       ) cu.cu_symbols;
-      Printf.printf "%!"
+      Printf.bprintf b "%!"
     with Not_found ->
-      Printf.printf "Compilation unit not found\n%!"
-  end
+      Printf.bprintf b "Compilation unit not found\n%!"
+  end;
+  Buffer.contents b
 
 let ocaml_paths debugger =
+  let b = Buffer.create 1000 in
   let target = SBDebugger.getSelectedTarget debugger in
   let ima = LLDBOCamlCode.get_compilation_units target in
   let paths = ref StringMap.empty in
@@ -239,18 +242,20 @@ let ocaml_paths debugger =
         StringMap.add cu.cu_dirname (ref [cu.cu_basename]) !paths
   ) ima.ima_cus;
   StringMap.iter (fun path files ->
-    Printf.printf "Path: %s\n%!" path
+    Printf.bprintf b "Path: %s\n%!" path
   ) !paths;
-  Printf.printf "You can use 'settings set target.source-map PATH1 PATH2'\n";
-  Printf.printf "to translate these paths to yours.\n%!"
+  Printf.bprintf b "You can use 'settings set target.source-map PATH1 PATH2'\n";
+  Printf.bprintf b "to translate these paths to yours.\n%!";
+  Buffer.contents b
 
 let strip s = if s = "" then s else List.hd @@ Str.split (Str.regexp "/") s
 
 let print_var target value name et tds vf =
+  let b = Buffer.create 1000 in
   let heap = LLDBOCamlHeap.get_heap_info target in
   let mem = LLDBOCamlHeap.get_memory_info target in
 
-  match et with
+  (match et with
   | [e,t] ->
     begin
       let typ = Symtbl.print_type e t in
@@ -258,30 +263,32 @@ let print_var target value name et tds vf =
       then begin
         let final = SBValue.getValueAsUnsigned1 value (-42L) in
         if final <> (-42L)
-        then LLDBOCamlValue.print_value target mem heap final [(e, t)] tds vf
-        else Printf.printf "%s : %s = not available\n" name typ
+        then Printf.bprintf b "%s" (LLDBOCamlValue.print_value target mem heap final [(e, t)] tds vf)
+        else Printf.bprintf b "%s : %s = not available\n" name typ
       end
-      else Printf.printf "%s : %s = not in scope\n" name typ
+      else Printf.bprintf b "%s : %s = not in scope\n" name typ
     end
   | _ ->
     begin
-      Printf.printf "%s : <type unavailable>" name;
+      Printf.bprintf b "%s : <type unavailable>" name;
       let final = SBValue.getValueAsUnsigned1 value (-42L) in
       if final <> (-42L) then begin
-        Printf.printf " = ";
-        LLDBOCamlValue.print_value target mem heap final et tds vf;
+        Printf.bprintf b " = ";
+        let s = LLDBOCamlValue.print_value target mem heap final et tds vf in
+        Printf.bprintf b "%s" s;
       end;
-      print_endline ""
-    end
+      Printf.bprintf b "\n"
+    end);
+  Buffer.contents b
 
 let ocaml_print_locals debugger var vf =
+  let b = Buffer.create 10000 in
   let target = SBDebugger.getSelectedTarget debugger in
   let process = SBTarget.getProcess target in
   let thread = SBProcess.getSelectedThread process in
   let frame = SBThread.getSelectedFrame thread in
 
-  let (inited, globals_map) = LLDBOCamlGlobals.load_globals_map target in
-  let (curr_modname, _, _, _) = globals_map.(inited) in
+  let curr_modname = get_current_module target in
 
   let get_type_and_env tbl var =
     try
@@ -289,77 +296,78 @@ let ocaml_print_locals debugger var vf =
     with _ -> begin try [Hashtbl.find tbl var] with _ -> [] end in
 
   match LLDBOCamlTypes.load_tt target curr_modname with
-  | Some (et, tds, _) ->
-  begin
-
-    if var = "" then
+    | Some (et, tds, _) ->
     begin
 
-      (* Among all variables captured in the symbol table, process all variables
-       * whose identifier is present in the DWARF.
-       *
-       * If an exception is raised when getting name of the variable, then it was not found
-       * and is ignored.
-       * *)
+      if var = ""
+      then begin
 
-      let processed = ref [] in
+        (* Among all variables captured in the symbol table, process all variables
+         * whose identifier is present in the DWARF.
+         *
+         * If an exception is raised when getting name of the variable, then it was not found
+         * and is ignored.
+         * *)
 
-      Hashtbl.iter (fun var (e,t) ->
-        let cvalue = SBFrame.findVariable frame var in
-          try
-            let n = SBValue.getName cvalue in
-            print_var target cvalue n [(e, t)] tds vf; processed := n :: !processed
-          with _ -> ()
-      ) et;
+        let processed = ref [] in
 
-      (* Variables introduced further down in the backend such as `bound` and `i_$stamp` in a for loop
-         might appear in the DWARF. Those variables are then processed.*)
+        Hashtbl.iter (fun var (e,t) ->
+          let cvalue = SBFrame.findVariable frame var in
+            try
+              let n = SBValue.getName cvalue in
+              let s = print_var target cvalue n [(e, t)] tds vf in
+              Printf.bprintf b "%s" s;
+              processed := n :: !processed
+            with _ -> ()
+        ) et;
 
-      let values = SBFrame.getVariables frame true true false true in
-      let size = SBValueList.getSize values in
-      for i = 0 to size - 1 do
+        (*(* Variables introduced further down in the backend such as `bound` and `i_$stamp` in a for loop*)
+           (*might appear in the DWARF. Those variables are then processed.*)*)
 
-        let value = SBValueList.getValueAtIndex values i in
-        let name = SBValue.getName value in
-        if not (List.mem name !processed) then
-        begin
-          let re = get_type_and_env et var in
-          print_var target value name re tds vf
-        end
-      done
+        let values = SBFrame.getVariables frame true true false true in
+        let size = SBValueList.getSize values in
+        for i = 0 to size - 1 do
+
+          let value = SBValueList.getValueAtIndex values i in
+          let name = SBValue.getName value in
+          if not (List.mem name !processed) then
+          begin
+            let re = get_type_and_env et var in
+            let s = print_var target value name re tds vf in Printf.bprintf b "%s" s
+          end
+        done;
+        Buffer.contents b
+      end else
+        let re = get_type_and_env et var in
+        print_var target (SBFrame.findVariable frame var) var re tds vf;
+
     end
-
-    else
-      let re = get_type_and_env et var in
-      print_var target (SBFrame.findVariable frame var) var re tds vf
-  end
-  | None -> Printf.printf "ttree not found\n"
+    | None -> Printf.sprintf "ttree not found\n"
 
 let ocaml_print_typeof debugger var =
   let target = SBDebugger.getSelectedTarget debugger in
   let curr_modname = get_current_module target in
   match LLDBOCamlTypes.load_tt target curr_modname with
-  | Some (_, _, symtbl) ->
+    | Some (_, _, symtbl) ->
       begin
       try
-          let (_, typ, _) = Hashtbl.find symtbl var in Printf.printf "%s : %s\n" var typ
-      with _ -> Printf.printf "not found\n"
+        let (_, typ, _) = Hashtbl.find symtbl var in Printf.sprintf "%s : %s\n" var typ;
+      with _ -> Printf.sprintf "not found\n"
       end
-  | None -> Printf.printf "ttree not found\n"
+    | None -> Printf.sprintf "ttree not found\n"
 
 #ifndef OCAML_NON_OCP
 
 let ocaml_locids debugger =
   let target = SBDebugger.getSelectedTarget debugger in
   let _locs = LLDBOCamlLocids.load target in
-  Printf.printf "Location table loaded.\n%!"
+  Printf.sprintf "Location table loaded.\n%!"
 
 let ocaml_globals_narg1 debugger modname =
   let target = SBDebugger.getSelectedTarget debugger in
   let heap = LLDBOCamlHeap.get_heap_info target in
   let mem = LLDBOCamlHeap.get_memory_info target in
-  LLDBOCamlGlobals.print_module_globals target mem heap modname;
-  ()
+  LLDBOCamlGlobals.print_module_globals target mem heap modname
 
 let ocaml_globals debugger =
   let target = SBDebugger.getSelectedTarget debugger in
@@ -381,8 +389,7 @@ let ocaml_global_narg1 debugger global =
   let target = SBDebugger.getSelectedTarget debugger in
   let heap = LLDBOCamlHeap.get_heap_info target in
   let mem = LLDBOCamlHeap.get_memory_info target in
-  LLDBOCamlGlobals.print_module_global target mem heap modname ident;
-  ()
+  LLDBOCamlGlobals.print_module_global target mem heap modname ident
 
 let ocaml_args_narg1 debugger nargs =
   let nargs = try
@@ -398,8 +405,7 @@ let ocaml_reg_narg1 debugger reg =
   let target = SBDebugger.getSelectedTarget debugger in
   let heap = LLDBOCamlHeap.get_heap_info target in
   let mem = LLDBOCamlHeap.get_memory_info target in
-  LLDBOCamlStack.print_reg target mem heap reg;
-  ()
+  LLDBOCamlStack.print_reg target mem heap reg
 
 #endif
 
@@ -417,9 +423,9 @@ let ocaml_command debugger args =
   | [ ("break" | "b"); funname ] -> ocaml_break_narg1 debugger funname
   | [ "debug" ] ->
     verbose := true;
-    Printf.printf "Debug mode set\n%!"
+    Printf.sprintf "Debug mode set\n%!"
 
-  | "set" :: variable :: values -> ocaml_set variable values
+  | "set" :: variable :: values -> ocaml_set variable values; ""
   | [ "modules" ] -> ocaml_modules debugger
   | [ "globals_map" ] -> ocaml_globals_map debugger
   | [ "current" ] -> ocaml_current debugger
@@ -446,43 +452,46 @@ let ocaml_command debugger args =
 #endif
 
   | [ "help" ] | [] ->
-    Printf.printf "Help on OCaml commands:\n";
-    Printf.printf "  'ocaml modules': list OCaml modules in executable\n%!";
-    Printf.printf "  'ocaml globals_map': extract and display globals_map\n%!";
-    Printf.printf "  'ocaml current': list evaluated modules until now\n%!";
-    Printf.printf "  'ocaml break Module.function': set a breakpoint on an OCaml function\n%!";
-    Printf.printf "  'ocaml heap' : print heap information\n%!";
-    Printf.printf "  'ocaml gcstats' : print GC stats\n%!";
-    Printf.printf "  'ocaml code' : print code segments\n%!";
-    Printf.printf "  'ocaml targets' : print information on binary components\n%!";
-    Printf.printf "  'ocaml paths' : print paths to sources\n%!";
-    Printf.printf "  'ocaml args NARGS' : print NARGS first arguments\n";
-    Printf.printf "  'ocaml reg RAX' : print register as an OCaml value\n";
-    Printf.printf "  'ocaml globals MODULE' : print all globals of MODULE\n";
-    Printf.printf "  'ocaml global MODULE.VALUE' : print fully-qualified global\n";
-    Printf.printf "  'ocaml print(v) locals' : list all available OCaml variables\n%!";
-    Printf.printf "  'ocaml print(v) var VARIABLE' : print information on OCaml variable\n%!";
-    Printf.printf "  'ocaml typeof VARIABLE' : print type information of an OCaml variable\n%!";
 
-    Printf.printf "  'ocaml target Module' : print target info on Module\n%!";
+    let b = Buffer.create 1000 in
+    Printf.bprintf b "Help on OCaml commands:\n";
+    Printf.bprintf b "  'ocaml modules': list OCaml modules in executable\n%!";
+    Printf.bprintf b "  'ocaml globals_map': extract and display globals_map\n%!";
+    Printf.bprintf b "  'ocaml current': list evaluated modules until now\n%!";
+    Printf.bprintf b "  'ocaml break Module.function': set a breakpoint on an OCaml function\n%!";
+    Printf.bprintf b "  'ocaml heap' : print heap information\n%!";
+    Printf.bprintf b "  'ocaml gcstats' : print GC stats\n%!";
+    Printf.bprintf b "  'ocaml code' : print code segments\n%!";
+    Printf.bprintf b "  'ocaml targets' : print information on binary components\n%!";
+    Printf.bprintf b "  'ocaml paths' : print paths to sources\n%!";
+    Printf.bprintf b "  'ocaml args NARGS' : print NARGS first arguments\n";
+    Printf.bprintf b "  'ocaml reg RAX' : print register as an OCaml value\n";
+    Printf.bprintf b "  'ocaml globals MODULE' : print all globals of MODULE\n";
+    Printf.bprintf b "  'ocaml global MODULE.VALUE' : print fully-qualified global\n";
+    Printf.bprintf b "  'ocaml print(v) locals' : list all available OCaml variables\n%!";
+    Printf.bprintf b "  'ocaml print(v) var VARIABLE' : print information on OCaml variable\n%!";
+    Printf.bprintf b "  'ocaml typeof VARIABLE' : print type information of an OCaml variable\n%!";
 
-    Printf.printf "  'ocaml print 0xFFF' : print information on value at 0xFFF\n%!";
-    Printf.printf "  'ocaml target' : print target info\n%!";
+    Printf.bprintf b "  'ocaml target Module' : print target info on Module\n%!";
 
-    Printf.printf "%!"
+    Printf.bprintf b "  'ocaml print 0xFFF' : print information on value at 0xFFF\n%!";
+    Printf.bprintf b "  'ocaml target' : print target info\n%!";
+
+    Printf.bprintf b "%!";
+    Buffer.contents b
 
   | _ ->
-    Printf.printf "No such command:\n";
+    let b = Buffer.create 1000 in
+    Printf.bprintf b "No such command:\n";
     Array.iteri (fun i cmd ->
-      Printf.printf "[%d] -> %S\n%!" i cmd
+      Printf.bprintf b "[%d] -> %S\n%!" i cmd
     ) args;
-    Printf.printf "Use 'ocaml help' for help\n%!"
+    Printf.bprintf b "Use 'ocaml help' for help\n%!";
+    Buffer.contents b
 
 let ocaml_command debugger args =
   (try
-    ocaml_command debugger args;
-    Printf.printf "%!" (* flush output *)
+    ocaml_command debugger args
   with e ->
-    Printf.printf "ocaml_command: exception %s\n%!"
-      (Printexc.to_string e));
-  "erp"
+    Printf.sprintf "ocaml_command: exception %s\n%!"
+      (Printexc.to_string e))

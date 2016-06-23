@@ -703,6 +703,7 @@ let print_value target mem heap initial_addr types type_decls verbose =
       LLDBOCamlLocids.load target
   in
 #endif
+  let b = Buffer.create 10000 in
   vf := verbose;
   tydecl_tbl := type_decls;
   let process = SBTarget.getProcess target in
@@ -714,12 +715,13 @@ let print_value target mem heap initial_addr types type_decls verbose =
   } in
   let lines = print_gen_value c 0 initial_addr types in
   List.iter (fun (indent, line, ty) ->
-    for i = 1 to indent do print_char ' '; done;
-    print_string line;
+    Printf.bprintf b "%*s" indent "";
+    Printf.bprintf b "%s" line;
     if ty <> "" then begin
-      print_string " : ";
-      print_string ty;
+      Printf.bprintf b " : ";
+      Printf.bprintf b "%s" ty;
     end;
-    print_newline ()
+    Printf.bprintf b "\n";
   ) lines;
   vf := false;
+  Buffer.contents b

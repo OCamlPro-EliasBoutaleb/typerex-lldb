@@ -25,9 +25,9 @@ val print_module_globals :
   LLDBTypes.mem_info ->
   LLDBTypes.heap_info ->
   string ->
-  unit
+  string
 
-val print_globals : LLDBGenerated.sbTarget -> unit
+val print_globals : LLDBGenerated.sbTarget -> string
 
 val print_module_global :
   LLDBGenerated.sbTarget ->
@@ -35,7 +35,7 @@ val print_module_global :
   LLDBTypes.heap_info ->
   string ->
   string ->
-  unit
+  string
 #endif
 
 val load_globals_map :
