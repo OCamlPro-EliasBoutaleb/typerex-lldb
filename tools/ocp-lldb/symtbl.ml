@@ -27,10 +27,10 @@ let strip s = if s = "" then s else List.hd @@ Str.split (Str.regexp "/") s
 
 let capture_func_args e =
 
-  let ident patt =
+  let ident patt len =
     match patt.pat_desc with
-      | Tpat_var (s,_) -> id_to_string s
-      | _ -> ""
+      | Tpat_var (s,_) -> assert (len = 1); id_to_string s
+      | _ -> assert (len > 1); "param"
   in
 
   let rec h expr =
@@ -39,11 +39,10 @@ let capture_func_args e =
 
     assert (List.length l > 0);
     let fn_scope = try List.hd !sc with _ -> failwith "not in a function" in
-    if List.length l > 1 then Printf.printf "function keyword/partial application detected for %s\n" fn_scope else
     begin
       let case = List.hd l in
 
-      let id = ident case.c_lhs in
+      let id = ident case.c_lhs (List.length l) in
 
       let patt = case.c_lhs in
 
