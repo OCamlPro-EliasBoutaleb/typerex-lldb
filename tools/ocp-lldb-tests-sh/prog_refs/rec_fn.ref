@@ -1,8 +1,8 @@
-Breakpoint 1: where = for` + 8 at rec_fn.ml:9, address = 0x000000000040f9e8
-Process 14479 stopped and restarted: thread 1 received signal: SIGCHLD
-Process 14479 stopped
-* thread #1: tid = 14479, 0x000000000040f9e8 for at rec_fn.ml:9, name = 'for', stop reason = breakpoint 1.1
-    frame #0: 0x000000000040f9e8 for at rec_fn.ml:9
+Breakpoint 1: where = a.out` + 8 at rec_fn.ml:9, address = 0x000000000040f9e8
+Process 9193 stopped and restarted: thread 1 received signal: SIGCHLD
+Process 9193 stopped
+* thread #1: tid = 9193, 0x000000000040f9e8 a.out at rec_fn.ml:9, name = 'a.out', stop reason = breakpoint 1.1
+    frame #0: 0x000000000040f9e8 a.out at rec_fn.ml:9
    6   	(*TODO*)
    7   	(*add bp for base recursion case *)
    8   	
@@ -11,12 +11,14 @@ Process 14479 stopped
    11  	    | [] -> 0
    12  	    (*bp present*)
 
-Process 14479 launched: '/home/jmbto/ocpwork/typerex-private/_obuild/ocp-lldb/for' (x86_64)
+Process 9193 launched: '/home/jmbto/ocpwork/typerex-private/_obuild/ocp-lldb/a.out' (x86_64)
 39 compilation units in this component
-function keyword/partial application detected for sigma/1008
+<list> : 'a list@_none_:1:-1--1{Dummy,No-Path}
+  typed value unhandled
+  typed value unhandled
+  typed value unhandled
+</list>
 f : <type unavailable> = Val 6506512 - 3253256 : 'a@_none_:1:-1--1{Dummy,No-Path}
-
-param : <type unavailable> = Val 6506616 - 3253308 : 'a@_none_:1:-1--1{Dummy,No-Path}
 
 
 General Purpose Registers:
@@ -31,12 +33,12 @@ General Purpose Registers:
         r8 = 0x0000000000000000
         r9 = 0x0000000000000001
        r10 = 0x00007ffff78c4b88  main_arena + 104
-       r11 = 0x0000000000643440  for`caml_young_ptr
-       r12 = 0x000000000040f991  for`camlRec_fn__entry + 65
-       r13 = 0x00000000004245bd  for`caml_start_program + 133
+       r11 = 0x0000000000643440  a.out`caml_young_ptr
+       r12 = 0x000000000040f991  a.out`camlRec_fn__entry + 65
+       r13 = 0x00000000004245bd  a.out`caml_start_program + 133
        r14 = 0x00007fffffffdef0
        r15 = 0x00007ffff74ffa30
-       rip = 0x000000000040f9e8  for` + 8 at rec_fn.ml:9
+       rip = 0x000000000040f9e8  a.out` + 8 at rec_fn.ml:9
     rflags = 0x0000000000000206
         cs = 0x0000000000000033
         fs = 0x0000000000000000
@@ -45,10 +47,12 @@ General Purpose Registers:
         ds = 0x0000000000000000
         es = 0x0000000000000000
 
-function keyword/partial application detected for sigma/1008
+<list> : 'a list@_none_:1:-1--1{Dummy,No-Path}
+  typed value unhandled
+  typed value unhandled
+  typed value unhandled
+</list>
 f : <type unavailable> = Val 6506512 - 3253256 : 'a@_none_:1:-1--1{Dummy,No-Path}
-
-param : <type unavailable> = Val 6506616 - 3253308 : 'a@_none_:1:-1--1{Dummy,No-Path}
 
 
 General Purpose Registers:
@@ -63,12 +67,12 @@ General Purpose Registers:
         r8 = 0x0000000000000000
         r9 = 0x0000000000000001
        r10 = 0x00007ffff78c4b88  main_arena + 104
-       r11 = 0x0000000000643440  for`caml_young_ptr
-       r12 = 0x000000000040f991  for`camlRec_fn__entry + 65
-       r13 = 0x00000000004245bd  for`caml_start_program + 133
+       r11 = 0x0000000000643440  a.out`caml_young_ptr
+       r12 = 0x000000000040f991  a.out`camlRec_fn__entry + 65
+       r13 = 0x00000000004245bd  a.out`caml_start_program + 133
        r14 = 0x00007fffffffdef0
        r15 = 0x00007ffff74ffa30
-       rip = 0x000000000040f9e8  for` + 8 at rec_fn.ml:9
+       rip = 0x000000000040f9e8  a.out` + 8 at rec_fn.ml:9
     rflags = 0x0000000000000206
         cs = 0x0000000000000033
         fs = 0x0000000000000000
@@ -77,10 +81,12 @@ General Purpose Registers:
         ds = 0x0000000000000000
         es = 0x0000000000000000
 
-function keyword/partial application detected for sigma/1008
+<list> : 'a list@_none_:1:-1--1{Dummy,No-Path}
+  typed value unhandled
+  typed value unhandled
+  typed value unhandled
+</list>
 f : <type unavailable> = Val 6506512 - 3253256 : 'a@_none_:1:-1--1{Dummy,No-Path}
-
-param : <type unavailable> = Val 6506616 - 3253308 : 'a@_none_:1:-1--1{Dummy,No-Path}
 
 
 Found 4 OCaml modules in executable
@@ -90,5 +96,4 @@ Found 4 OCaml modules in executable
 [  3] Std_exit
 
 CamlinternalFormatBasics Pervasives [Rec_fn]
-
 

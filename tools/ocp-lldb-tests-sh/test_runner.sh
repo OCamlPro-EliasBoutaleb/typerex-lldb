@@ -10,10 +10,14 @@ _clean() {
     eval $* # read new flags
 }
 
+# Location of liblldb.so
 readonly LLDB_LIB_DIR="/media/jmbto/1decfa63-a052-4827-837e-f93d3d14e9d4/llvm/oml/lib/"
+
+# Location of ocaml compiler suite and related settings/flags
 readonly OCAML_DIR="/home/jmbto/ocpwork/typerex-private/ocaml/4.02.1+ocp1"
 readonly OCAMLOPT="$OCAML_DIR/ocamlopt"
 readonly OCAMLOPT_FLAGS="-I stdlib -g -S -dvb"
+
 readonly OBUILD_DIR="/home/jmbto/ocpwork/typerex-private/_obuild/ocp-lldb/"
 
 readonly PROG_DIR=$(readlink -m $(dirname $0))
@@ -38,13 +42,12 @@ run_batch_and_cmp ()
 {
     local batch_file=`readlink -f $1`
     local name=`basename -s .batch $batch_file`
-    local ref_file="$name.ref"
-    
+    local ref_file="prog_refs/$name.ref"
+
     colordiff $ref_file \
         <(
         export LD_LIBRARY_PATH=$LLDB_LIB_DIR;
-        cd $OBUILD_DIR &&
-        ./ocp-lldb.asm -no-auto-start -b $batch_file $WORK_DIR/a.out
+        $OBUILD_DIR/ocp-lldb.asm -no-auto-start -b $batch_file $WORK_DIR/a.out
         )
 }
 
@@ -56,12 +59,13 @@ main_run_test_suite ()
     # Make sure to delete the tempfile no matter what
     trap "rm -f $TMPFILE; exit" INT TERM EXIT
 
-    compile_and_copy "rec_fn.ml" && run_batch_and_cmp "rec_fn.batch"
+    #compile_and_copy "prog_tests/rec_fn.ml" && run_batch_and_cmp "batchs/rec_fn.batch"
 
-    #assert_raises "compile_and_copy rec_fn.ml"
-    #assert_raises "run_batch_and_cmp rec_fn.batch"
+    assert_raises "compile_and_copy prog_tests/rec_fn.ml && run_batch_and_cmp batchs/rec_fn.batch"
 
-    assert_end demo
+    #assert_raises "compile_and_copy prog_tests/rec_fn.ml"
+    #assert_raises "run_batch_and_cmp batchs/rec_fn.batch"
+    #assert_end demo
 }
 
 main_run_test_suite

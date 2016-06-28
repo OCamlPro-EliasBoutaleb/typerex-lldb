@@ -1,0 +1,14 @@
+Breakpoint 1: where = a.out` + 8 at tes.ml:7, address = 0x0000000000418db8
+Process 20088 stopped and restarted: thread 1 received signal: SIGCHLD
+Process 20088 stopped
+* thread #1: tid = 20088, 0x0000000000418db8 a.out at tes.ml:7, name = 'a.out', stop reason = breakpoint 1.1
+    frame #0: 0x0000000000418db8 a.out at tes.ml:7
+   4   	
+   5   	let ass x = let ah = 45 * 34 in ("dd", 3 + Random.int x)
+   6   	
+-> 7   	let rec main x =
+   8   	    let g = Random.int 123 in
+   9   	    let a = 42 in
+   10  	    let b = 43 in
+
+Process 20088 launched: '/tmp/a.out' (x86_64)
