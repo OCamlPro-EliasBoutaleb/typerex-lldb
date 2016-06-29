@@ -25,14 +25,16 @@ begin library "ocplib-lldb"
 
     generator_byte = %byte_exe( p = "ocp-lldb-gen")
 
+    enum_generator_byte = %byte_exe( p = "ocp-lldb-enum-gen")
+
 
     generated_h = [ "lldbGenerated_ml.h" "lldbClasses_ml.h" "lldbDelete_ml.h"
                       "lldbIncludes_ml.h" ]
-    generated_ml = [ "LLDBGenerated.ml" ]
+    generated_ml = [ "LLDBGenerated.ml" "LLDBEnumsGen.ml" ]
 
 
     files =  [ generated_ml "LLDBEnums.ml" "LLDBOCaml.ml" ]
-    requires = [ "ocp-lldb-gen" "lldb-conf" string_compat ]
+    requires = [ "ocp-lldb-gen" "ocp-lldb-enum-gen" "lldb-conf" string_compat ]
 
 
      stubs_cpp = "lldbOCaml_ml.cpp"
@@ -44,10 +46,12 @@ begin library "ocplib-lldb"
     build_rules = [
       [generated_ml generated_h] (
         uniq_rule = "ocplldb-generation"
-        sources = [ generator_byte ]
+        sources = [ generator_byte enum_generator_byte ]
           commands = [
             { "bash" "-c"
                 %string( strings= [ generator_byte " " lldb_includes "/lldb/API/*.h" ]) }
+            { "bash" "-c"
+                %string( strings= [ enum_generator_byte " " lldb_includes "/lldb/lldb-enumerations.h" ]) }
           ]
       )
      stubs_lib (
@@ -68,3 +72,9 @@ begin
   requires = [ string_compat ];
   files = [ "readHH.ml" ]
 end;;
+
+begin program "ocp-lldb-enum-gen"
+    enabled = has_lldb
+    files = [ "readenumH.ml" ]
+    requires = [ string_compat ]
+end
