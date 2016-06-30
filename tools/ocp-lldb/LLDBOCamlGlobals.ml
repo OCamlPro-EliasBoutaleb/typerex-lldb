@@ -132,7 +132,6 @@ let print_module_global target mem heap modname ident =
 let load_globals_map target =
   let caml_globals_map_addr = LLDBUtils.symbol_address target
     "caml_globals_map" in
-  (*  let heap = LLDBOCamlHeap.get_heap_info target in *)
   let mem = LLDBOCamlHeap.get_memory_info target in
   let process = SBTarget.getProcess target in
   let caml_globals_map = LLDBOCamlDatarepr.load_string process mem

@@ -264,7 +264,7 @@ let is_addr_on_heap c ofs =
   LLDBUtils.test_offset h ofs
 
 #ifdef OCAML_NON_OCP
-let string_of_type_expr env ty = Symtbl.print_type env ty
+let string_of_type_expr env ty = Symtbl.print_type (env,ty)
 #else
 let string_of_type_expr env ty = GcprofLocations.string_of_type_expr env ty
 #endif
