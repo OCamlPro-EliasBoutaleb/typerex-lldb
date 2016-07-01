@@ -70,20 +70,20 @@ let tree_of_qualified lookup_fun env ty_path name =
     name
   | Pdot(p, s, pos) ->
     if try
-         match (lookup_fun (Lident name) env).desc with
-         | Tconstr(ty_path', _, _) -> Path.same ty_path ty_path'
-         | _ -> false
+        match (lookup_fun (Lident name) env).desc with
+        | Tconstr(ty_path', _, _) -> Path.same ty_path ty_path'
+        | _ -> false
       with Not_found -> false
-        then name
-        else Printf.sprintf "%s.%s" (Path.name p) name
-      | Papply _ -> Path.name ty_path
+    then name
+    else Printf.sprintf "%s.%s" (Path.name p) name
+  | Papply _ -> Path.name ty_path
 
-    let tree_of_constr =
-      tree_of_qualified
-        (fun lid env -> (Env.lookup_constructor lid env).cstr_res)
+let tree_of_constr =
+  tree_of_qualified
+    (fun lid env -> (Env.lookup_constructor lid env).cstr_res)
 
-    and tree_of_label =
-      tree_of_qualified (fun lid env -> (Env.lookup_label lid env).lbl_res)
+and tree_of_label =
+  tree_of_qualified (fun lid env -> (Env.lookup_label lid env).lbl_res)
 
 
 let pointer_kind mem heap addr =
@@ -91,23 +91,23 @@ let pointer_kind mem heap addr =
   if Int64.logand addr 1L <> 0L then
     Value
   else
-    if
-      addr >= heap.caml_young_start && addr <= heap.caml_young_end
-    then
-      MinorAddress
-    else
-      if ChunkSet.mem range heap.caml_major_heap then
-        MajorAddress
-      else
-        try
-          let m = ChunkMap.find range mem.data_fragments in
-          ModuleData m
-        with Not_found ->
-          try
-            let m = ChunkMap.find range mem.code_fragments in
-            ModuleCode m
-          with Not_found ->
-            Pointer
+  if
+    addr >= heap.caml_young_start && addr <= heap.caml_young_end
+  then
+    MinorAddress
+  else
+  if ChunkSet.mem range heap.caml_major_heap then
+    MajorAddress
+  else
+    try
+      let m = ChunkMap.find range mem.data_fragments in
+      ModuleData m
+    with Not_found ->
+    try
+      let m = ChunkMap.find range mem.code_fragments in
+      ModuleCode m
+    with Not_found ->
+      Pointer
 
 let debug_path s path =
   match s with
@@ -656,9 +656,8 @@ and print_block_variant c indent h addr env path decl ty ty_list constr_list =
   let type_params =
     match ret_type with
       Some t ->
-        begin match (Ctype.repr t).desc with
-          Tconstr (_,params,_) ->
-            params
+      begin match (Ctype.repr t).desc with
+        Tconstr (_,params,_) -> params
         | _ -> assert false end
     | None -> decl.type_params
   in
