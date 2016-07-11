@@ -406,9 +406,12 @@ and print_typed_valueh c indent v (env,ty) =
     | Record(env, ty, ty_list, path, decl, lbl_list) ->
         print_record c indent v env ty decl path ty_list lbl_list
     | Variant(env, ty, ty_list, path, decl, constr_list) ->
+    (*TODO : not handling arrays well*)
       if Int64.logand v 1L = 0L then
         let h = get_header_of_block c v in
+        try
         print_block_variant c indent h v env path decl ty ty_list constr_list
+        with _ -> failwith (Printf.sprintf "0x%Lx %d %d" v h.tag h.wosize)
       else
         print_const_variant indent ocaml_value constr_list
     | Nope -> [indent, "typed value unhandled", ""]

@@ -77,8 +77,11 @@ let capture_func_args e =
 
   let ident patt case_len =
     match patt.pat_desc with
-    | Tpat_var (s,_) -> assert (case_len = 1); id_to_string s
-    | _ -> assert (case_len > 1); "param"
+    | Tpat_var (s,_) -> assert (case_len = 1); 
+                        id_to_string s
+    | _ -> 
+            (*assert (case_len > 1); *)
+            "param"
   in
 
   let rec h expr acc =
