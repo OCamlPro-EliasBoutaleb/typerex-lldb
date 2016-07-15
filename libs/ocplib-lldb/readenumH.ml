@@ -130,6 +130,7 @@ let parse_tokens enums tokens =
                 Some (enum_name, flags, prev_enum)
 
             (*handling non-flags enum*)
+
             | Ident flag :: Kwd "=" :: Int n :: enum_rest ->
                 (*Printf.eprintf "got a enum named %s from %s of val non spe %d\n%!" flag enum_name n;*)
                 Some (enum_name, (flag,n)::flags, n+1)
