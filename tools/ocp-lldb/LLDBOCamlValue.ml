@@ -59,7 +59,6 @@ let string_of_tag tag =
   | 255 -> "custom"
   | _ -> "value"
 
-
 (* Print a constructor or label, giving it the same prefix as the type
    it comes from. Attempt to omit the prefix if the type comes from
    a module that has been opened. *)
@@ -85,10 +84,52 @@ let tree_of_constr =
 and tree_of_label =
   tree_of_qualified (fun lid env -> (Env.lookup_label lid env).lbl_res)
 
+type context = {
+  mem : LLDBTypes.mem_info;
+  heap : LLDBTypes.heap_info;
+  process : sbProcess;
+#ifndef OCAML_NON_OCP
+  locs : GcprofTypes.locations;
+#endif
+}
 
-let pointer_kind mem heap addr =
+(*catch the exception and backtrack?*)
+let deref c v =
+  try LLDBUtils.getMem64 c.process v with _ -> v
+
+let is_addr_on_stack c ofs =
+  let process = c.process in
+  let pid = SBProcess.getProcessID process in
+  let s,h = LLDBUtils.get_stack_and_heap_ranges pid in
+  LLDBUtils.test_offset s ofs
+
+let is_addr_on_heap c ofs =
+  let process = c.process in
+  let pid = SBProcess.getProcessID process in
+  let s,h = LLDBUtils.get_stack_and_heap_ranges pid in
+  LLDBUtils.test_offset h ofs
+
+  (*if (is_addr_on_stack c addr)*)
+  (*then Printf.printf "%Lx on stack\n" addr*)
+  (*else if is_addr_on_heap c addr then *)
+  (*Printf.printf "%Lx on heap\n" addr*)
+  (*else*)
+  (*Printf.printf "%Lx most probably from static data\n" addr;*)
+  (*let tgt = SBProcess.getTarget c.process in*)
+  (*LLDBUtils.addr2section_lookup tgt addr;*)
+
+let pointer_kind c addr =
+  let mem = c.mem in
+  let heap = c.heap in
   let range =  (addr,Int64.add addr 1L) in
-  if Int64.logand addr 1L <> 0L then
+
+  (*do the indirection if the value is on the stack*)
+  let addr =
+    if is_addr_on_stack c addr
+    then deref c addr
+    else addr in
+
+  (if Int64.logand addr 1L <> 0L then
     Value
   else
   if
@@ -107,7 +148,7 @@ let pointer_kind mem heap addr =
       let m = ChunkMap.find range mem.code_fragments in
       ModuleCode m
     with Not_found ->
-      Pointer
+      Pointer)
 
 let debug_path s path =
   match s with
@@ -130,15 +171,6 @@ let constructor_info
     { cd_id =constr_name; cd_args = constr_args; cd_res = ret_type }
 #endif
     = (constr_name, constr_args,ret_type)
-
-type context = {
-  mem : LLDBTypes.mem_info;
-  heap : LLDBTypes.heap_info;
-  process : sbProcess;
-#ifndef OCAML_NON_OCP
-  locs : GcprofTypes.locations;
-#endif
-}
 
 type value_type =
     List of Env.t * type_expr
@@ -251,18 +283,6 @@ let get_header_of_block c v =
   let header = LLDBUtils.getMem64 c.process (Int64.sub v 8L) in
   LLDBOCamlDatarepr.parse_header c.mem header
 
-let is_addr_on_stack c ofs =
-  let process = c.process in
-  let pid = SBProcess.getProcessID process in
-  let s,h = LLDBUtils.get_stack_and_heap_ranges pid in
-  LLDBUtils.test_offset s ofs
-
-let is_addr_on_heap c ofs =
-  let process = c.process in
-  let pid = SBProcess.getProcessID process in
-  let s,h = LLDBUtils.get_stack_and_heap_ranges pid in
-  LLDBUtils.test_offset h ofs
-
 #ifdef OCAML_NON_OCP
 let string_of_type_expr env ty = Symtbl.print_type (env,ty)
 #else
@@ -271,7 +291,7 @@ let string_of_type_expr env ty = GcprofLocations.string_of_type_expr env ty
 
 let rec print_gen_value c indent addr types =
   if indent > !max_indent && (not !vf) then [ indent, "...", ""] else
-  match pointer_kind c.mem c.heap addr with
+  match pointer_kind c addr with
   | ModuleCode m ->
     [ indent,
       Printf.sprintf "0x%Lx" addr,
@@ -337,19 +357,10 @@ let rec print_gen_value c indent addr types =
           (indent, descr, ty) :: tail
 #endif
     end
-  | Value -> print_value c indent addr types
-  | Pointer -> let nv = LLDBUtils.getMem64 c.process addr in print_value c indent nv types
+  | Value | Pointer -> print_value c indent addr types
 
 and print_value c indent addr types =
 
-  (*if (is_addr_on_stack c addr)*)
-  (*then Printf.printf "%Lx on stack\n" addr*)
-  (*else if is_addr_on_heap c addr then *)
-         (*Printf.printf "%Lx on heap\n" addr*)
-       (*else*)
-           (*Printf.printf "%Lx most probably from static data\n" addr;*)
-           (*let tgt = SBProcess.getTarget c.process in*)
-           (*LLDBUtils.addr2section_lookup tgt addr;*)
   match types with
     | [] -> [indent, Printf.sprintf "Val %Ld - %Ld" addr (Int64.shift_right addr 1), ""]
     | (env, ty) :: types ->
@@ -401,7 +412,7 @@ and print_typed_valueh c indent v (env,ty) =
            (print_array (envv,tty) c indent v 0 h.wosize)
     | Option (env, ty) -> print_option c indent env ty v
     | Ref (env, ty) ->
-      let nv = LLDBUtils.getMem64 c.process v in
+      let nv = deref c v in
       (indent, "<ref>", "") :: print_typed_valueh c (indent+2) nv (env,ty)
     | Record(env, ty, ty_list, path, decl, lbl_list) ->
         print_record c indent v env ty decl path ty_list lbl_list
