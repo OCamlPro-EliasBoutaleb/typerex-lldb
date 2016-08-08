@@ -62,6 +62,7 @@ let tydecl_tbl = ref @@ Hashtbl.create 100
 let root n = (create_module n, Top : sym_info zipper)
 let curr_node = ref @@ root ""
 
+let strip_slash s = if s = "" then s else List.hd @@ Str.split (Str.regexp "/") s
 let strip s = if s = "" then s else List.hd @@ Str.split (Str.regexp "_") s
 let change s = Str.replace_first (Str.regexp "/") "_" s
 
@@ -172,7 +173,7 @@ module IterArg = struct
         let funn = create_fun ident bind.vb_expr.exp_env bind.vb_expr.exp_type args bind.vb_loc in
         let upd = last_child_of_pos @@ move_down @@ insert_down !curr_node funn in curr_node := upd;
       | _ ->
-        let vb = create_vb ident bind.vb_expr.exp_env bind.vb_expr.exp_type bind.vb_loc in
+        let vb = create_vb (change ident) bind.vb_expr.exp_env bind.vb_expr.exp_type bind.vb_loc in
         let upd = insert_down !curr_node vb in curr_node := upd
     end
 
@@ -196,7 +197,7 @@ module IterArg = struct
     let ident = id_to_string td.typ_id in
     tds := !tds @ [ident, td.typ_type];
 
-    Hashtbl.add !tydecl_tbl (strip ident) td.typ_type
+    Hashtbl.add !tydecl_tbl (strip_slash ident) td.typ_type
 
 end
 
@@ -255,7 +256,7 @@ let sym_printer indent t =
         s ^  "args are : " ^ args
       | ValueBind vb ->
         sprintf "vb %s : %s\n" vb.vb_name (print_type vb.vb_type)
-      | _ -> "" in change s in
+      | _ -> "" in s in
 
   let rec trav t =
     match t with

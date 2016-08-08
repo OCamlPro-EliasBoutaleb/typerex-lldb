@@ -417,7 +417,8 @@ and print_typed_valueh c indent v (env,ty) =
     | Record(env, ty, ty_list, path, decl, lbl_list) ->
         print_record c indent v env ty decl path ty_list lbl_list
     | Variant(env, ty, ty_list, path, decl, constr_list) ->
-    (*TODO : not handling arrays well*)
+    (*TODO : not handling arrays well. for example with arrays of floats,
+     * the block contains a stack pointer to the block array with unboxed float*)
       if Int64.logand v 1L = 0L then
         let h = get_header_of_block c v in
         try
@@ -660,6 +661,7 @@ and print_const_variant indent ocaml_value constr_list =
     [indent, "unhandled const variant", ""]
 
 and print_block_variant c indent h addr env path decl ty ty_list constr_list =
+  Printf.printf "tag %d\n%!" h.tag;
   let tag =
     Cstr_block h.tag
   in
