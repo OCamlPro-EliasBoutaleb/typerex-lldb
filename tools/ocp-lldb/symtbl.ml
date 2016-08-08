@@ -62,7 +62,8 @@ let tydecl_tbl = ref @@ Hashtbl.create 100
 let root n = (create_module n, Top : sym_info zipper)
 let curr_node = ref @@ root ""
 
-let strip s = if s = "" then s else List.hd @@ Str.split (Str.regexp "/") s
+let strip s = if s = "" then s else List.hd @@ Str.split (Str.regexp "_") s
+let change s = Str.replace_first (Str.regexp "/") "_" s
 
 let get_curr t =
   match t with
@@ -77,9 +78,9 @@ let capture_func_args e =
 
   let ident patt case_len =
     match patt.pat_desc with
-    | Tpat_var (s,_) -> assert (case_len = 1); 
+    | Tpat_var (s,_) -> assert (case_len = 1);
                         id_to_string s
-    | _ -> 
+    | _ ->
             (*assert (case_len > 1); *)
             "param"
   in
@@ -130,7 +131,7 @@ module IterArg = struct
                 let funn = create_fun ns bind.vb_expr.exp_env bind.vb_expr.exp_type args bind.vb_loc in
                 curr_node := append_and_goto_child !curr_node funn);
             | _ ->
-              let vb = create_vb ns bind.vb_expr.exp_env bind.vb_expr.exp_type bind.vb_loc in
+              let vb = create_vb (change ns) bind.vb_expr.exp_env bind.vb_expr.exp_type bind.vb_loc in
               curr_node := append_and_goto_child !curr_node vb
           end
         | _ -> ()
@@ -201,9 +202,6 @@ end
 
 module MyIterator = TypedtreeIter.MakeIterator (IterArg)
 
-let change s =
-  Str.replace_first (Str.regexp "/") "_" s
-
 let dump_dot t n =
 
   let print x =
@@ -214,7 +212,7 @@ let dump_dot t n =
         "FUN"^fi.fun_name
       | ValueBind vb ->
         "VB"^vb.vb_name
-      | _ -> "" in change s in
+      | _ -> "" in s in
 
   let rec trav t =
     match t with

@@ -42,6 +42,17 @@ let demangle mangled =
   let len = loop 0 0 in
   Bytes.sub str 4 (len-4)
 
+let is_prefix s ~prefix =
+  let len_pref = String.length prefix in
+  String.length s >= len_pref
+  && (let rec loop i =
+      i = len_pref || (prefix.[i] = s.[i] && loop (i + 1))
+  in loop 0)
+
+(*WARN : handle the double underscore*)
+let ismangled mangled_name =
+  String.length mangled_name > 4
+    && is_prefix mangled_name "caml"
 
 (*this retrives the current module from the current frame, though it uses the mangled symbol*)
 let get_current_module target =
@@ -270,6 +281,7 @@ let ocaml_paths debugger =
   Buffer.contents b
 
 let strip s = if s = "" then s else List.hd @@ Str.split (Str.regexp "/") s
+let strip_dot s = if s = "" then s else List.hd @@ List.tl @@ Str.split (Str.regexp "\.") s
 
 let print_var target value name et tds vf =
   let b = Buffer.create 1000 in
@@ -280,14 +292,10 @@ let print_var target value name et tds vf =
    | [et] ->
      begin
        let typ = Symtbl.print_type et in
-       if SBValue.isInScope value
-       then begin
-         let final = SBValue.getValueAsUnsigned1 value (-42L) in
-         if final <> (-42L)
+       let final = SBValue.getValueAsUnsigned1 value (-42L) in
+       if final <> (-42L)
          then Printf.bprintf b "%s = %s" name (LLDBOCamlValue.print_value target mem heap final [et] tds vf)
          else Printf.bprintf b "%s = not available : %s\n" name typ
-       end
-       else Printf.bprintf b "%s = not in scope : %s\n" name typ
      end
    | _ ->
      begin
@@ -326,12 +334,15 @@ let ocaml_print_locals debugger var vf =
         (* Variables introduced further down in the backend such as `bound` and `i_$stamp` in a for loop
            might appear in the DWARF. Those variables are then processed.*)
 
-        let values = SBFrame.getVariables frame true true false true in
+        (*GetVariables (bool arguments, bool locals, bool statics, bool in_scope_only)*)
+        let values = SBFrame.getVariables frame true true true true in
         let size = SBValueList.getSize values in
         for i = 0 to size - 1 do
 
           let value = SBValueList.getValueAtIndex values i in
-          let name = SBValue.getName value in
+          let mangled_name = SBValue.getName value in
+
+          let name = if ismangled mangled_name then (strip_dot @@ demangle mangled_name) else mangled_name in
           (
             let re = get_type_and_env et name in
             let s = print_var target value name re tds vf in Printf.bprintf b "%s" s
