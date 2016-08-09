@@ -9,7 +9,7 @@ Build and install
 You need "autoconf" and "aclocal".
 
 ```
-./configure
+LLVM_VERSION=3.* ./configure
 ```
 
 You can read "config/Makefile" to verify that it suits your configuration. In
@@ -17,8 +17,15 @@ particular, ./configure does not check for LLDB files location, so you should
 fix "config/Makefile" if it is not correct there.
 
 ```
-make
+LLVM_VERSION=3.* make
 ```
+
+Running ocp-lldb
+================
+
+If you compiled lldb from source, you need to specifiy the path to liblldb.
+
+LD_LIBRARY_PATH=path/to/liblldb ./ocp-lldb.asm -no-auto-start -- BINARY
 
 License
 =======
@@ -76,7 +83,8 @@ OCaml extensions:
 ocaml modules: list available modules
 ocaml break MODULE.function: put a breakpoint on the corresponding function
 ocaml heap: print heap related values
-ocaml print 0xFFF: print information on value at 0xFFF
+ocaml printv locals' : list all available OCaml variables
+ocaml printv var VARIABLE' : print information on OCaml variable
 
 Useful lldb commands:
 =====================
