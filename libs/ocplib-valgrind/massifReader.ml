@@ -190,7 +190,7 @@ let of_file filename =
       if line.[0] = '#' then () else
         find_sep line 0 len
   in
-  File.iter_lines line_reader filename;
+  FileString.iter_lines line_reader filename;
   flush_snapshot ();
   let header = match !header with
       None -> failwith "Empty file"

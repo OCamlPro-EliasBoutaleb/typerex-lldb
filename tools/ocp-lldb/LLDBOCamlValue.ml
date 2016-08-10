@@ -200,18 +200,15 @@ let find_decl_value ty env path ty_list =
       | Type_record (lbl_list, record_repr) -> Record(env, ty, ty_list, path, decl, lbl_list)
       | Type_variant constr_list -> Variant (env, ty, ty_list, path, decl, constr_list)
       | Type_open
-      | Type_abstract -> Printf.printf "unsupported type decl\n";Nope
-  in
+      | Type_abstract -> Printf.printf "unsupported type decl\n";Nope in
 
- match Env.find_type path env with
-   | exception exn -> begin
-     let tds = !tydecl_tbl in
-     try
-       let td = Hashtbl.find tds (Path.name path) in handle_decl td
-     with _ -> Printf.printf "type decl not found\n"; Nope
-   end
-
-   | decl -> handle_decl decl
+  try
+    handle_decl (Env.find_type path env)
+  with _ ->
+    (let tds = !tydecl_tbl in
+    try
+      handle_decl (Hashtbl.find tds (Path.name path))
+    with _ -> Printf.printf "type decl not found\n"; Nope)
 
 let find_type (env, ty) =
   let ty = Ctype.expand_head env ty in

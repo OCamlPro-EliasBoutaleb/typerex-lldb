@@ -207,6 +207,6 @@ let of_file filename =
     | '*' | '+' | '-' | '0'..'9' -> flush_event line
     | _ -> find_sep line 0 len
   in
-  File.iter_lines line_reader filename;
+  FileString.iter_lines line_reader filename;
   flush_event ();
   ()
