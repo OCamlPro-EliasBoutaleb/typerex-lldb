@@ -52,6 +52,11 @@ let id_to_string s =
   fprintf str_formatter "%a" (Ident.print) s;
   flush_str_formatter ()
 
+let get_ident pat default =
+  match pat.pat_desc with
+  | Tpat_var (s,_) -> id_to_string s
+  | _ -> default
+
 let create_module n = leaf @@ Module {mod_name=n; type_decls=[]}
 let create_vb n e t l = leaf @@ ValueBind {vb_name=n; vb_type=e,t; vb_loc=l}
 let create_fun n e t a l = leaf @@ Function {fun_name=n; fun_type=e,t; fun_args=a; fun_loc=l}
@@ -93,13 +98,18 @@ let capture_func_args e =
       assert (List.length l > 0);
       begin
         let case = List.hd l in
-        let id = ident case.c_lhs (List.length l) in
-        let patt = case.c_lhs in
 
+#if OCAML_VERSION < "4.02"
+        let (patt, expr) = case in
+#else
+        let patt = case.c_lhs in
+        let expr = case.c_rhs in
+#endif
+        let id = ident patt (List.length l) in
         let param_env, param_type, param_loc =
           (patt.pat_env, patt.pat_type, patt.pat_loc) in
 
-        h case.c_rhs (fun ys -> acc ((id, param_env, param_type, param_loc)::ys))
+        h expr (fun ys -> acc ((id, param_env, param_type, param_loc)::ys))
       end
     | _ -> acc [] in
 
@@ -114,25 +124,28 @@ module IterArg = struct
   let enter_structure_item si =
 
     let r = match si.str_desc with
-      | Tstr_value (_, [vb]) -> [vb]
-      | Tstr_value (_, vbs) -> [List.hd vbs]
+#if OCAML_VERSION < "4.02"
+      | Tstr_value (_, (pat,expr)::_) -> [pat, expr, expr.exp_loc]
+#else
+      | Tstr_value (_, vb::_) -> [vb.vb_pat, vb.vb_expr, vb.vb_loc]
+#endif
       | _ -> [] in
 
     match r with
     | [] -> ()
-    | [bind] ->
+    | [pat, expr, loc] ->
       begin
-        match bind.vb_pat.pat_desc with
+        match pat.pat_desc with
         | Tpat_var (s,_) ->
           let ns = id_to_string s in
           begin
-            match bind.vb_expr.exp_desc with
+            match expr.exp_desc with
             | Texp_function _ ->
-                (let args = capture_func_args (bind.vb_expr) in
-                let funn = create_fun ns bind.vb_expr.exp_env bind.vb_expr.exp_type args bind.vb_loc in
-                curr_node := append_and_goto_child !curr_node funn);
+              (let args = capture_func_args expr in
+              let funn = create_fun ns expr.exp_env expr.exp_type args loc in
+              curr_node := append_and_goto_child !curr_node funn);
             | _ ->
-              let vb = create_vb (change ns) bind.vb_expr.exp_env bind.vb_expr.exp_type bind.vb_loc in
+              let vb = create_vb (change ns) expr.exp_env expr.exp_type loc in
               curr_node := append_and_goto_child !curr_node vb
           end
         | _ -> ()
@@ -142,62 +155,69 @@ module IterArg = struct
   let leave_structure_item si =
 
     let r = match si.str_desc with
-      | Tstr_value (_, [vb]) -> [vb]
-      | Tstr_value (_, vbs) -> [List.hd vbs]
+#if OCAML_VERSION < "4.02"
+      | Tstr_value (_, (pat,_)::_) -> [pat]
+#else
+      | Tstr_value (_, vb::_) -> [vb.vb_pat]
+#endif
       | _ -> [] in
 
     match r with
-    | [] -> ()
-    | [v] ->
+    | [pat] ->
       begin
-        match v.vb_pat.pat_desc with
-        | Tpat_var (s,_) ->
-          curr_node := (move_up !curr_node)
+        match pat.pat_desc with
+        | Tpat_var (s,_) -> curr_node := (move_up !curr_node)
         | _ -> ()
       end
-    | hd :: tl -> ()
+    | _ -> ()
 
+#if OCAML_VERSION < "4.02"
+  let enter_binding pat expr =
+#else
   let enter_binding bind =
-    let ident =
-      match bind.vb_pat.pat_desc with
-      | Tpat_var (s,_) -> id_to_string s
-      | _ -> ""
-    in
-
+    let pat = bind.vb_pat in
+    let expr = bind.vb_expr in
+#endif
+    let ident = get_ident pat "" in
     let nt, n =  get_curr @@ current_tree !curr_node in
 
     if ident <> "" && ident <> n then begin
-      match bind.vb_expr.exp_desc with
+      match expr.exp_desc with
       | Texp_function _ ->
-        let args = capture_func_args (bind.vb_expr) in
-        let funn = create_fun ident bind.vb_expr.exp_env bind.vb_expr.exp_type args bind.vb_loc in
+        let args = capture_func_args expr in
+        let funn = create_fun ident expr.exp_env expr.exp_type args expr.exp_loc in
         let upd = last_child_of_pos @@ move_down @@ insert_down !curr_node funn in curr_node := upd;
       | _ ->
-        let vb = create_vb (change ident) bind.vb_expr.exp_env bind.vb_expr.exp_type bind.vb_loc in
+        let vb = create_vb (change ident) expr.exp_env expr.exp_type expr.exp_loc in
         let upd = insert_down !curr_node vb in curr_node := upd
     end
 
+#if OCAML_VERSION < "4.02"
+  let leave_binding pat expr =
+#else
   let leave_binding bind =
-
-    let ident =
-      match bind.vb_pat.pat_desc with
-      | Tpat_var (s,_) -> id_to_string s
-      | _ -> ""
-    in
-
+    let pat = bind.vb_pat in
+    let expr = bind.vb_expr in
+#endif
+    let ident = get_ident pat "" in
     let nt, n = get_curr @@ current_tree !curr_node in
+
     if ident <> "" && ident <> n then begin
-      match bind.vb_expr.exp_desc with
+      match expr.exp_desc with
       | Texp_function _ ->
         let upd = move_up !curr_node in curr_node := upd
       | _ -> ()
     end
 
   let leave_type_declaration td =
+#if OCAML_VERSION < "4.02"
+    Printf.printf "should not be used with OCaml < 4.02\n%!"
+#else
     let ident = id_to_string td.typ_id in
     tds := !tds @ [ident, td.typ_type];
 
     Hashtbl.add !tydecl_tbl (strip_slash ident) td.typ_type
+#endif
 
 end
 

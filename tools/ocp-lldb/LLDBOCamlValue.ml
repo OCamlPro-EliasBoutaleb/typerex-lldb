@@ -188,6 +188,10 @@ let extract_constant_ctors ~cases =
     (fun (constant_ctors, next_ctor_number) ctor_decl ->
       let ident = ctor_decl.cd_id in
       match ctor_decl.cd_args with
+#if OCAML_VERSION >= "4.03"
+        | Cstr_record lbl_list -> assert false
+        | Cstr_tuple constr_args -> match constr_args with
+#endif
         | [] ->
             (next_ctor_number, ident)::constant_ctors, next_ctor_number + 1
         | _ -> constant_ctors, next_ctor_number)

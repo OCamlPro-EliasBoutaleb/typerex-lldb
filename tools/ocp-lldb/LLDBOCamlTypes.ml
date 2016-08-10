@@ -41,7 +41,13 @@ let get_ttree_from_symbol sym len =
   if !LLDBGlobals.verbose then
     Printf.printf "ofs 0x%Lx of section %s ; read %d out of %d bytes\n" ofs sect_name bytes_read len;
 
-  let (ttree : Typedtree.structure) = Marshal.from_bytes buffer 0 in ttree
+  let (ttree : Typedtree.structure) =
+#if OCAML_VERSION < "4.02"
+      Marshal.from_string buffer 0
+#else
+      Marshal.from_bytes buffer 0
+#endif
+  in ttree
 
 let get_size_from_symbol target sym =
   let sym_name = SBSymbol.getName sym in
