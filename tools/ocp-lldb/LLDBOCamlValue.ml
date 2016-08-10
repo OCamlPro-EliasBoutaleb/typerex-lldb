@@ -178,10 +178,13 @@ type value_type =
   | Array of Env.t * type_expr
   | Option of Env.t * type_expr
   | Ref of Env.t * type_expr
+#if OCAML_VERSION >= "4.02"
   | Record of Env.t * type_expr * type_expr list * Path.t * type_declaration * label_declaration list
   | Variant of Env.t * type_expr * type_expr list * Path.t * type_declaration * constructor_declaration list
+#endif
   | FLOAT | INT32 | INT64 | CHAR | BOOL | STR | INT | NINT | UNIT | Nope
 
+#if OCAML_VERSION >= "4.02"
 let extract_constant_ctors ~cases =
   let constant_ctors, _ =
     List.fold_left
@@ -197,14 +200,19 @@ let extract_constant_ctors ~cases =
         | _ -> constant_ctors, next_ctor_number)
     ([], 0) cases
   in constant_ctors
+#endif
 
 let find_decl_value ty env path ty_list =
   let handle_decl decl =
+#if OCAML_VERSION >= "4.02"
     match decl.type_kind with
       | Type_record (lbl_list, record_repr) -> Record(env, ty, ty_list, path, decl, lbl_list)
       | Type_variant constr_list -> Variant (env, ty, ty_list, path, decl, constr_list)
       | Type_open
       | Type_abstract -> Printf.printf "unsupported type decl\n";Nope in
+#else
+    failwith "ocaml < 4.02 not supported" in
+#endif
 
   try
     handle_decl (Env.find_type path env)
@@ -415,6 +423,7 @@ and print_typed_valueh c indent v (env,ty) =
     | Ref (env, ty) ->
       let nv = deref c v in
       (indent, "<ref>", "") :: print_typed_valueh c (indent+2) nv (env,ty)
+#if OCAML_VERSION >= "4.02"
     | Record(env, ty, ty_list, path, decl, lbl_list) ->
         print_record c indent v env ty decl path ty_list lbl_list
     | Variant(env, ty, ty_list, path, decl, constr_list) ->
@@ -427,6 +436,7 @@ and print_typed_valueh c indent v (env,ty) =
         with _ -> failwith (Printf.sprintf "0x%Lx %d %d" v h.tag h.wosize)
       else
         print_const_variant indent ocaml_value constr_list
+#endif
     | Nope -> [indent, "typed value unhandled", ""]
 
 and print_float indent n =
@@ -647,6 +657,7 @@ and print_record c indent addr env ty decl path ty_list lbl_list =
              fields)) @
        [ indent, "}", "" ]
 
+#if OCAML_VERSION >= "4.02"
 and print_const_variant indent ocaml_value constr_list =
   let const_ctors = extract_constant_ctors constr_list in
   if ocaml_value >= 0 && ocaml_value < List.length const_ctors
@@ -660,6 +671,7 @@ and print_const_variant indent ocaml_value constr_list =
     end
   else
     [indent, "unhandled const variant", ""]
+#endif
 
 and print_block_variant c indent h addr env path decl ty ty_list constr_list =
   Printf.printf "tag %d\n%!" h.tag;
